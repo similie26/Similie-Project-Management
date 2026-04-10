@@ -1,32 +1,32 @@
 -- Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL,
-  assignees TEXT[] NOT NULL,
-  dueDate TEXT,
-  priority TEXT,
-  category TEXT,
-  progress INTEGER,
-  comments INTEGER,
-  attachments INTEGER,
-  description TEXT,
-  subtasks JSONB,
-  projectId TEXT,
-  dependencies TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "id" TEXT PRIMARY KEY,
+  "title" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "assignees" TEXT[] NOT NULL,
+  "dueDate" TEXT,
+  "priority" TEXT,
+  "category" TEXT,
+  "progress" INTEGER,
+  "comments" INTEGER,
+  "attachments" INTEGER,
+  "description" TEXT,
+  "subtasks" JSONB,
+  "projectId" TEXT,
+  "dependencies" TEXT[],
+  "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create projects table
 CREATE TABLE IF NOT EXISTS projects (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  members INTEGER DEFAULT 1,
-  activeTasks INTEGER DEFAULT 0,
-  progress INTEGER DEFAULT 0,
-  status TEXT NOT NULL,
-  category TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "id" TEXT PRIMARY KEY,
+  "name" TEXT NOT NULL,
+  "members" INTEGER DEFAULT 1,
+  "activeTasks" INTEGER DEFAULT 0,
+  "progress" INTEGER DEFAULT 0,
+  "status" TEXT NOT NULL,
+  "category" TEXT NOT NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Enable Row Level Security (RLS)

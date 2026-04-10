@@ -832,9 +832,9 @@ export default function App() {
                     try {
                       const { error } = await supabase.from('projects').insert(newProject);
                       if (error) throw error;
-                    } catch (err) {
+                    } catch (err: any) {
                       console.error('Supabase project insert error:', err);
-                      showToast("Failed to sync project to Supabase");
+                      showToast(`Sync failed: ${err.message || "Check Supabase tables and RLS policies"}`);
                     }
                   }}
                   className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
