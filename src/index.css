@@ -1,0 +1,78 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Manrope", sans-serif;
+
+  --color-tertiary-dim: #892a65;
+  --color-on-background: #32294f;
+  --color-on-secondary-fixed-variant: #573da6;
+  --color-tertiary: #983772;
+  --color-error-container: #f74b6d;
+  --color-tertiary-container: #fd8bca;
+  --color-on-error-container: #510017;
+  --color-background: #f4f8ff;
+  --color-surface-bright: #f4f8ff;
+  --color-secondary-container: #d8caff;
+  --color-on-tertiary-fixed-variant: #6d104e;
+  --color-on-secondary: #f7f0ff;
+  --color-on-secondary-fixed: #3a1b88;
+  --color-on-primary-container: #001b3d;
+  --color-surface-dim: #d8e3f5;
+  --color-surface-container-high: #e1e9f7;
+  --color-on-error: #ffefef;
+  --color-primary-fixed-dim: #a6bce0;
+  --color-secondary-fixed: #d8caff;
+  --color-tertiary-fixed-dim: #ee7ebc;
+  --color-surface-container-lowest: #ffffff;
+  --color-secondary-fixed-dim: #cbbaff;
+  --color-surface: #f4f8ff;
+  --color-error-dim: #a70138;
+  --color-tertiary-fixed: #fd8bca;
+  --color-on-tertiary-container: #610244;
+  --color-on-primary-fixed-variant: #405a8a;
+  --color-on-secondary-container: #4e339c;
+  --color-on-tertiary: #ffeff4;
+  --color-secondary-dim: #563ca5;
+  --color-on-surface-variant: #5f557f;
+  --color-outline: #7b719c;
+  --color-surface-container-low: #eff4ff;
+  --color-primary-fixed: #c5d4ed;
+  --color-primary: #7a9ed4;
+  --color-primary-dim: #5d82b8;
+  --color-on-tertiary-fixed: #360024;
+  --color-on-surface: #32294f;
+  --color-surface-container: #e6efff;
+  --color-surface-container-highest: #dbe8ff;
+  --color-inverse-on-surface: #a296c4;
+  --color-surface-tint: #7a9ed4;
+  --color-on-primary: #ffffff;
+  --color-inverse-surface: #10062d;
+  --color-error: #b41340;
+  --color-secondary: #6249b2;
+  --color-outline-variant: #b2a6d5;
+  --color-primary-container: #c5d4ed;
+  --color-inverse-primary: #a6bce0;
+  --color-surface-variant: #e2d7ff;
+  --color-on-primary-fixed: #000000;
+
+  --shadow-ambient: 0px 24px 48px -12px rgba(0, 27, 61, 0.08);
+}
+
+@layer base {
+  body {
+    @apply bg-surface font-sans text-on-surface;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
