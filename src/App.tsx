@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { 
   LayoutDashboard, 
@@ -247,6 +247,13 @@ export default function App() {
     checkInvitation();
   }, [session]);
 
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (!session?.user || isInvited === false || !isSupabaseConfigured) return;
 
@@ -266,7 +273,7 @@ export default function App() {
           setProjects(projectsData);
         }
 
-        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('email', session.user.email).maybeSingle();
+        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
         if (profileError) throw profileError;
         if (profileData) {
           setUserProfile(profileData);
@@ -521,6 +528,15 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4 relative">
+            <div className="hidden xl:flex flex-col items-end mr-4">
+              <span className="text-sm font-bold text-on-surface font-headline">
+                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                {currentTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+            
             <button 
               onClick={() => setNotificationsOpen(!notificationsOpen)}
               className={cn(
@@ -642,6 +658,7 @@ export default function App() {
                     setSelectedProjectId(null);
                     setCurrentView('projects');
                   }}
+                  userProfile={userProfile}
                 />
               )}
               {currentView === 'projects' && (
@@ -692,6 +709,7 @@ export default function App() {
               {currentView === 'profile' && userProfile && (
                 <ProfileView 
                   profile={userProfile} 
+                  onShowToast={showToast}
                   onUpdateProfile={async (updatedProfile) => {
                     setUserProfile(updatedProfile);
                     try {
@@ -881,16 +899,67 @@ export default function App() {
   );
 }
 
-function ProfileView({ profile, onUpdateProfile }: { 
+function ProfileView({ profile, onUpdateProfile, onShowToast }: { 
   profile: UserProfile, 
-  onUpdateProfile: (profile: UserProfile) => void 
+  onUpdateProfile: (profile: UserProfile) => void,
+  onShowToast: (msg: string) => void
 }) {
   const [editedProfile, setEditedProfile] = useState<UserProfile>(profile);
   const [isEditing, setIsEditing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
     onUpdateProfile(editedProfile);
     setIsEditing(false);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      onShowToast("Please upload an image file");
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      onShowToast("Image size must be less than 2MB");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${profile.id}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const updated = { ...editedProfile, avatar: publicUrl };
+      setEditedProfile(updated);
+      onUpdateProfile(updated);
+      onShowToast("Profile picture uploaded successfully");
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      if (err.message === 'Bucket not found') {
+        onShowToast("Storage bucket 'avatars' not found. Please create it in your Supabase dashboard.");
+      } else {
+        onShowToast(`Upload failed: ${err.message}`);
+      }
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -899,18 +968,35 @@ function ProfileView({ profile, onUpdateProfile }: {
         {/* Avatar Section */}
         <div className="w-full md:w-1/3 flex flex-col items-center gap-6 bg-surface-container-lowest p-8 rounded-3xl shadow-ambient">
           <div className="relative group">
-            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-primary/20 shadow-xl">
-              <img 
-                src={editedProfile.avatar} 
-                alt={editedProfile.name} 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-primary/20 shadow-xl bg-surface-container flex items-center justify-center">
+              {isUploading ? (
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <img 
+                  src={editedProfile.avatar} 
+                  alt={editedProfile.name} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              )}
             </div>
             {isEditing && (
-              <button className="absolute bottom-0 right-0 p-2 bg-primary text-white rounded-full shadow-lg hover:scale-110 transition-transform">
-                <Camera className="w-5 h-5" />
-              </button>
+              <>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                  className="hidden" 
+                  accept="image/*"
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="absolute bottom-0 right-0 p-2 bg-primary text-white rounded-full shadow-lg hover:scale-110 transition-transform disabled:opacity-50"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+              </>
             )}
           </div>
           <div className="text-center">
@@ -1091,18 +1177,23 @@ function ProfileView({ profile, onUpdateProfile }: {
 
 // --- Sub-Views ---
 
-function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAllTasks }: { 
+function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAllTasks, userProfile }: { 
   tasks: Task[], 
   projects: Project[], 
   onTaskClick: (task: Task) => void,
   onProjectClick: (projectId: string) => void,
-  onViewAllTasks: () => void
+  onViewAllTasks: () => void,
+  userProfile: UserProfile | null
 }) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const firstName = userProfile?.name.split(' ')[0] || 'there';
+
   return (
     <div className="space-y-12">
       <section>
-        <h2 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Welcome back, Sarah.</h2>
-        <p className="text-on-surface-variant font-sans text-lg">You have {tasks.filter(t => t.dueDate === 'Today' || t.dueDate?.includes('today')).length} critical tasks finishing today.</p>
+        <h2 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Welcome back, {firstName}.</h2>
+        <p className="text-on-surface-variant font-sans text-lg">You have {tasks.filter(t => t.dueDate === todayStr || t.dueDate === 'Today').length} critical tasks finishing today.</p>
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
@@ -1504,23 +1595,65 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onShowToas
 
 function CalendarView() {
   const [view, setView] = useState('Month');
+  const [currentDate, setCurrentDate] = useState(new Date());
   
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const year = currentDate.getFullYear();
+
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+  const daysInMonth = getDaysInMonth(year, currentDate.getMonth());
+  const firstDay = getFirstDayOfMonth(year, currentDate.getMonth());
+  const daysInPrevMonth = getDaysInMonth(year, currentDate.getMonth() - 1);
+
+  const calendarDays = [];
+  // Prev month days
+  for (let i = firstDay - 1; i >= 0; i--) {
+    calendarDays.push({ day: daysInPrevMonth - i, currentMonth: false });
+  }
+  // Current month days
+  for (let i = 1; i <= daysInMonth; i++) {
+    calendarDays.push({ day: i, currentMonth: true });
+  }
+  // Next month days
+  const remaining = 42 - calendarDays.length;
+  for (let i = 1; i <= remaining; i++) {
+    calendarDays.push({ day: i, currentMonth: false });
+  }
+
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)));
+  };
+
+  const isToday = (day: number, isCurrentMonth: boolean) => {
+    const today = new Date();
+    return isCurrentMonth && 
+           day === today.getDate() && 
+           currentDate.getMonth() === today.getMonth() && 
+           currentDate.getFullYear() === today.getFullYear();
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-4 mb-2">
-            <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface font-headline">October 2023</h2>
+            <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface font-headline">{monthName} {year}</h2>
             <div className="flex gap-1">
-              <button className="p-2 hover:bg-surface-container rounded-lg transition-colors">
-                <Plus className="w-5 h-5 rotate-45" />
+              <button onClick={handlePrevMonth} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
+                <ChevronLeft className="w-5 h-5" />
               </button>
-              <button className="p-2 hover:bg-surface-container rounded-lg transition-colors">
-                <Plus className="w-5 h-5 -rotate-45" />
+              <button onClick={handleNextMonth} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </div>
-          <p className="text-on-surface-variant font-medium">12 tasks due this month • 3 overdue</p>
+          <p className="text-on-surface-variant font-medium">Dynamic calendar view synced to real-time</p>
         </div>
         <div className="flex items-center bg-surface-container-low p-1.5 rounded-2xl">
           {['Day', 'Week', 'Month', 'Agenda'].map(v => (
@@ -1545,36 +1678,20 @@ function CalendarView() {
           ))}
         </div>
         <div className="grid grid-cols-7 divide-x divide-y divide-outline-variant/10">
-          {[...Array(35)].map((_, i) => {
-            const day = i - 6;
-            const isCurrentMonth = day > 0 && day <= 31;
-            return (
-              <div key={i} className={cn(
-                "min-h-[140px] p-4 font-medium transition-colors hover:bg-surface-container/20",
-                !isCurrentMonth && "bg-surface-container/20 text-on-surface-variant/40",
-                day === 11 && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
+          {calendarDays.map((item, i) => (
+            <div key={i} className={cn(
+              "min-h-[140px] p-4 font-medium transition-colors hover:bg-surface-container/20",
+              !item.currentMonth && "bg-surface-container/20 text-on-surface-variant/40",
+              isToday(item.day, item.currentMonth) && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
+            )}>
+              <span className={cn(
+                "inline-flex w-8 h-8 items-center justify-center rounded-full text-sm font-bold",
+                isToday(item.day, item.currentMonth) ? "bg-primary text-white" : "text-on-surface"
               )}>
-                <span className={cn(
-                  "inline-flex w-8 h-8 items-center justify-center rounded-full text-sm font-bold",
-                  day === 11 ? "bg-primary text-white" : "text-on-surface"
-                )}>
-                  {isCurrentMonth ? day : day <= 0 ? 30 + day : day - 31}
-                </span>
-                {day === 4 && (
-                  <div className="mt-2 bg-primary text-on-primary text-[10px] font-bold py-1.5 px-2 rounded-lg shadow-lg">
-                    Brand Guidelines Overhaul
-                  </div>
-                )}
-                {day === 11 && (
-                  <div className="mt-2 space-y-1">
-                    <div className="bg-tertiary-container text-on-tertiary-container text-[10px] font-bold py-1.5 px-2 rounded-lg border-l-4 border-tertiary truncate">
-                      Design Critique
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                {item.day}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
