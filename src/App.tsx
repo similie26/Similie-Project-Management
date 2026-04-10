@@ -130,7 +130,7 @@ const MOCK_ACTIVITIES: Activity[] = [
     action: 'moved',
     target: 'Final QA Review',
     time: '2 hours ago',
-    project: 'Project Atrium',
+    project: 'Project Beached Street',
     comment: 'Looks great everyone! Performance metrics are exceeding targets.',
     type: 'move'
   }
@@ -399,12 +399,27 @@ export default function App() {
         isSidebarOpen ? "w-72" : "w-20"
       )}>
         <div className="px-8 mb-12 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0">
-            <span className="font-bold text-lg">A</span>
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0 overflow-hidden">
+            <img 
+              src="/logo.jpg" 
+              alt="Beached Street Logo" 
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  const span = document.createElement('span');
+                  span.className = 'font-bold text-lg';
+                  span.innerText = 'B';
+                  parent.appendChild(span);
+                }
+              }}
+            />
           </div>
           {isSidebarOpen && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <h2 className="text-xl font-extrabold text-primary leading-tight">The Atrium</h2>
+              <h2 className="text-xl font-extrabold text-primary leading-tight">Beached Street</h2>
               <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant/60">Premium Workflow</p>
             </motion.div>
           )}
@@ -1170,7 +1185,7 @@ function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAll
           </h3>
           <ul className="space-y-4">
             {[
-              { date: '12', month: 'Oct', title: 'Client Onboarding', sub: 'Atrium Project' },
+              { date: '12', month: 'Oct', title: 'Client Onboarding', sub: 'Beached Street Project' },
               { date: '15', month: 'Oct', title: 'Beta Release', sub: 'Internal Alpha' }
             ].map((d, i) => (
               <li key={i} className="flex items-center gap-4">
@@ -2199,10 +2214,25 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/10 rounded-full blur-[120px]" />
       
       <div className="max-w-md w-full bg-surface-bright/80 backdrop-blur-2xl p-12 rounded-[3rem] shadow-ambient border border-white/20 text-center relative z-10">
-        <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center text-white shadow-2xl shadow-primary/40 mx-auto mb-10 transform -rotate-6 hover:rotate-0 transition-transform duration-500">
-          <span className="font-bold text-3xl">A</span>
+        <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center text-white shadow-2xl shadow-primary/40 mx-auto mb-10 transform -rotate-6 hover:rotate-0 transition-transform duration-500 overflow-hidden">
+          <img 
+            src="/logo.jpg" 
+            alt="Beached Street Logo" 
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                const span = document.createElement('span');
+                span.className = 'font-bold text-3xl';
+                span.innerText = 'B';
+                parent.appendChild(span);
+              }
+            }}
+          />
         </div>
-        <h1 className="text-5xl font-extrabold text-on-surface font-headline mb-6 tracking-tighter">The Atrium</h1>
+        <h1 className="text-5xl font-extrabold text-on-surface font-headline mb-6 tracking-tighter">Beached Street</h1>
         
         {!isSupabaseConfigured && (
           <div className="mb-8 p-4 bg-error/10 border border-error/20 rounded-2xl flex items-center gap-3 text-left">

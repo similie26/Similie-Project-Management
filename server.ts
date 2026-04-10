@@ -36,18 +36,18 @@ async function startServer() {
       });
     }
 
-    const resendFrom = process.env.RESEND_FROM_EMAIL || 'The Atrium <onboarding@resend.dev>';
+    const resendFrom = process.env.RESEND_FROM_EMAIL || 'Beached Street <onboarding@resend.dev>';
 
     try {
       const { data, error } = await resend.emails.send({
         from: resendFrom,
         to: [email],
-        subject: 'You have been invited to The Atrium',
+        subject: 'You have been invited to Beached Street',
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #eee; border-radius: 10px;">
-            <h1 style="color: #000; margin-bottom: 24px;">Welcome to The Atrium</h1>
+            <h1 style="color: #000; margin-bottom: 24px;">Welcome to Beached Street</h1>
             <p style="font-size: 16px; line-height: 1.6; color: #444;">
-              You have been invited to join a premium workspace at <strong>The Atrium</strong>.
+              You have been invited to join a premium workspace at <strong>Beached Street</strong>.
             </p>
             <div style="margin: 32px 0;">
               <a href="${inviteUrl}" style="background-color: #000; color: #fff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
