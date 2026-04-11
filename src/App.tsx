@@ -39,6 +39,28 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+import { 
+  DndContext, 
+  closestCorners, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 // Types
 import { Task, TeamMember, Activity, Project, Status, UserProfile } from './types';
 
@@ -48,99 +70,6 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const ADMIN_EMAILS = ['similietimor@gmail.com', 'liberty.nahak@similie.org'].map(e => e.toLowerCase());
-const ADMIN_PASSWORDS: Record<string, string> = {
-  'similietimor@gmail.com': 'Admin26Similie',
-  'liberty.nahak@similie.org': 'SimilieAdmin9900'
-};
-
-// Mock Data
-const MOCK_TASKS: Task[] = [
-  {
-    id: '1',
-    title: 'Update Brand Identity Guidelines',
-    status: 'In Progress',
-    assignees: ['Sarah', 'Alex'],
-    dueDate: 'today at 5:00 PM',
-    priority: 'High',
-    category: 'Design',
-    progress: 65,
-    description: 'We need to overhaul the visual language for the upcoming Q3 campaign. This includes updating our color palette for digital surfaces and ensuring the new typography hierarchy is reflected across all marketing collateral.',
-    subtasks: [
-      { label: 'Audit existing color palette', done: true },
-      { label: 'Draft new brand guidelines PDF', done: true },
-      { label: 'Review typography with leadership', done: false },
-      { label: 'Export final asset library', done: false }
-    ]
-  },
-  {
-    id: '2',
-    title: 'Q3 Financial Projection Review',
-    status: 'Blocked',
-    assignees: ['David'],
-    category: 'Finance',
-    description: 'Waiting for legal team to approve the final numbers before we can proceed with the board presentation.'
-  },
-  {
-    id: '3',
-    title: 'Refactor navigation Shell for Glassmorphism effects',
-    status: 'In Progress',
-    assignees: ['Alex'],
-    priority: 'High',
-    progress: 65,
-    dueDate: 'Today'
-  },
-  {
-    id: '4',
-    title: 'User interviews for the new workspace flow',
-    status: 'Backlog',
-    assignees: ['Sarah'],
-    dueDate: 'Oct 12',
-    category: 'Research'
-  }
-];
-
-const MOCK_TEAM: TeamMember[] = [
-  {
-    id: '1',
-    name: 'Sarah Jenkins',
-    role: 'Project Manager',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD0Nop2-RwO9YPc0rjDpg5Swcm0xEwWw0xmzRQ7F2a0dqnUsmqizd2uZlzjt8Hq0UjvMbpyVMzkV2GMjhrZc5xofchdLUbvF_4Fdb5a_5pRYQMxSOeLiEeKrcKAtQjyr9oxusMXgIgluoG9KjwRXJ8D21nyf00uD9o4WtjE5-jIto7sRmdXEjoAxOrs75jZmQHXhIiEFnzo3rEtxrDuoBGdCtz3QlBYdtfU5NwfQf7dsALNlhoU6Ys5wownNcoLLZv_7qcWiHhFWSE',
-    load: 82,
-    activeTasks: 14,
-    blockedTasks: 0,
-    status: 'online'
-  },
-  {
-    id: '2',
-    name: 'David Roark',
-    role: 'Full-stack Engineer',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCw2FwfiflqMQUlxZoL5v5RDjFP2ci-ydoHu3QjyMPZRL50690j5-sRcLEvzxWMdSmBU1sSWAqd0hBah_myu1xqG-qtWrGXdcZ5b5fs8wWrGIP0QrxIamu1rKOInUDhIflHrUNKDGAIcQqbdxsBbTAzCJLsxjUDA0Q1YLQVJbIEZxAo2cpVk07n-h2CZXKPpxuCljr62a0UtMdx7QRmSo_mUdU9XCYISssb0GnM6CjkO9TPsEwJJVL0OXtJqYpWq_309_KqYtbRm2g',
-    load: 104,
-    activeTasks: 28,
-    blockedTasks: 3,
-    status: 'busy'
-  }
-];
-
-const MOCK_ACTIVITIES: Activity[] = [
-  {
-    id: '1',
-    user: 'Helena Ross',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDzt2W1bDpvLLQhtmsHJ8rnJwrKJCFOfYtAvT1EKFH5gHsJTcUd7xgvEEirOd4YF3tHZJyU-5-ByYGPltzOvE9xkYI7tSOQ1yvDQ6t7mbojzA8iE1wfzWocSoFmqrceRjs_vKyyphT4pnhyXlCyuzTsGiixb9HPlBT-XSw5DI4evkjB74j0u3sUxFevP_R5tUTHLmIPdR8x0p8CLxC-mOL-kB6eR6YIP2zNfuVJ2olbP5j5HIij4VV8hP_mC5i6gNZ8GRrxNG3BM-U',
-    action: 'moved',
-    target: 'Final QA Review',
-    time: '2 hours ago',
-    project: 'Project Beached Street',
-    comment: 'Looks great everyone! Performance metrics are exceeding targets.',
-    type: 'move'
-  }
-];
-
-const MOCK_PROJECTS: Project[] = [
-  { id: '1', name: 'Design System Expansion', members: 4, activeTasks: 12, progress: 75, status: 'Healthy', category: 'Design' },
-  { id: '2', name: 'API Refactor Phase 2', members: 2, activeTasks: 8, progress: 42, status: 'At Risk', category: 'Dev' },
-  { id: '3', name: 'Marketing Launch Q4', members: 6, activeTasks: 24, progress: 92, status: 'Healthy', category: 'Marketing' }
-];
 
 type View = 'dashboard' | 'projects' | 'calendar' | 'team' | 'settings' | 'profile' | 'invites';
 
@@ -150,8 +79,9 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-  const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
@@ -271,6 +201,22 @@ export default function App() {
         if (projectsError) throw projectsError;
         if (projectsData && projectsData.length > 0) {
           setProjects(projectsData);
+        }
+
+        const { data: teamData, error: teamError } = await supabase.from('profiles').select('*');
+        if (teamError) throw teamError;
+        if (teamData) {
+          const members: TeamMember[] = teamData.map(p => ({
+            id: p.id,
+            name: p.name,
+            role: p.role,
+            avatar: p.avatar,
+            load: Math.floor(Math.random() * 100), // Mock load for now as it's not in profiles
+            activeTasks: 0,
+            blockedTasks: 0,
+            status: 'online'
+          }));
+          setTeamMembers(members);
         }
 
         const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
@@ -398,8 +344,13 @@ export default function App() {
     );
   }
 
+  const isDarkMode = userProfile?.preferences.darkMode || false;
+
   return (
-    <div className="flex h-screen overflow-hidden bg-surface">
+    <div className={cn(
+      "flex h-screen overflow-hidden bg-surface transition-colors duration-300",
+      isDarkMode && "dark"
+    )}>
       {/* Sidebar */}
       <aside className={cn(
         "hidden md:flex flex-col h-full bg-surface-container-low py-10 transition-all duration-300 border-r border-outline-variant/10",
@@ -408,7 +359,7 @@ export default function App() {
         <div className="px-8 mb-12 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0 overflow-hidden">
             <img 
-              src="/logo.jpg" 
+              src="logo.jpg" 
               alt="Beached Street Logo" 
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -561,17 +512,9 @@ export default function App() {
                     <button className="text-[10px] font-bold text-primary uppercase tracking-widest">Mark all read</button>
                   </div>
                   <div className="max-h-96 overflow-y-auto p-2 space-y-1">
-                    {MOCK_ACTIVITIES.map(activity => (
-                      <div key={activity.id} className="p-3 rounded-xl hover:bg-surface-container transition-colors cursor-pointer flex gap-3">
-                        <img src={activity.avatar} className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
-                        <div>
-                          <p className="text-xs text-on-surface leading-tight">
-                            <span className="font-bold">{activity.user}</span> {activity.action} <span className="font-semibold text-primary">{activity.target}</span>
-                          </p>
-                          <span className="text-[10px] text-on-surface-variant/60">{activity.time}</span>
-                        </div>
-                      </div>
-                    ))}
+                    <div className="p-8 text-center">
+                      <p className="text-xs text-on-surface-variant/40 italic">No new notifications</p>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -671,6 +614,21 @@ export default function App() {
                   activeProject={projects.find(p => p.id === selectedProjectId) || null}
                   onTaskClick={setSelectedTask} 
                   onShowToast={showToast}
+                  teamMembers={teamMembers}
+                  onUpdateTask={async (updatedTask) => {
+                    const newTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+                    setTasks(newTasks);
+                    try {
+                      const { error } = await supabase.from('tasks').upsert(updatedTask);
+                      if (error) {
+                        console.error('Supabase update error:', error);
+                        showToast(`Failed to sync: ${error.message}`);
+                      }
+                    } catch (err: any) {
+                      console.error('Supabase update error:', err);
+                      showToast(`Failed to sync: ${err.message || 'Unknown error'}`);
+                    }
+                  }}
                   onAddTask={async (status) => {
                     const newTask: Task = {
                       id: Math.random().toString(36).substr(2, 9),
@@ -704,7 +662,7 @@ export default function App() {
                 />
               )}
               {currentView === 'calendar' && <CalendarView />}
-              {currentView === 'team' && <TeamView />}
+              {currentView === 'team' && <TeamView teamMembers={teamMembers} />}
               {currentView === 'settings' && <div className="text-center py-20 text-on-surface-variant">Settings view coming soon...</div>}
               {currentView === 'profile' && userProfile && (
                 <ProfileView 
@@ -757,6 +715,7 @@ export default function App() {
                 task={selectedTask} 
                 allTasks={tasks}
                 onClose={() => setSelectedTask(null)} 
+                teamMembers={teamMembers}
                 onUpdateTask={async (updatedTask) => {
                   const newTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
                   setTasks(newTasks);
@@ -766,10 +725,14 @@ export default function App() {
                     if (error) {
                       console.error('Supabase update error:', error);
                       showToast(`Failed to sync: ${error.message}`);
+                      return { success: false, error };
                     }
+                    showToast("Changes saved successfully");
+                    return { success: true };
                   } catch (err: any) {
                     console.error('Supabase update error:', err);
                     showToast(`Failed to sync: ${err.message || 'Unknown error'}`);
+                    return { success: false, error: err };
                   }
                 }}
               />
@@ -1302,24 +1265,25 @@ function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAll
             </button>
           </div>
           <div className="space-y-6">
-            {MOCK_ACTIVITIES.map(activity => (
-              <div key={activity.id} className="flex gap-4">
-                <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 ring-2 ring-white">
-                  <img src={activity.avatar} alt={activity.user} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <div className="flex-1 pb-6 border-b border-surface-container-high last:border-0">
-                  <p className="text-on-surface leading-snug">
-                    <span className="font-bold">{activity.user}</span> {activity.action} <span className="font-semibold text-primary">{activity.target}</span> to <span className="text-secondary font-bold">Done</span>
-                  </p>
-                  <span className="text-xs text-on-surface-variant font-medium">{activity.time} • {activity.project}</span>
-                  {activity.comment && (
-                    <div className="mt-3 p-4 bg-surface-container-lowest rounded-xl text-sm italic text-on-surface-variant border border-outline-variant/10">
-                      "{activity.comment}"
-                    </div>
-                  )}
-                </div>
+            {tasks.length === 0 ? (
+              <div className="text-center py-10 text-on-surface-variant/40 italic text-sm">
+                No recent activity to show.
               </div>
-            ))}
+            ) : (
+              tasks.slice(0, 3).map(task => (
+                <div key={task.id} className="flex gap-4">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 ring-2 ring-white">
+                    <User className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1 pb-6 border-b border-surface-container-high last:border-0">
+                    <p className="text-on-surface leading-snug">
+                      Task <span className="font-bold">{task.title}</span> is currently <span className="font-semibold text-primary">{task.status}</span>
+                    </p>
+                    <span className="text-xs text-on-surface-variant font-medium">Updated recently</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -1368,12 +1332,63 @@ function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAll
   );
 }
 
-function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onShowToast }: { 
+function SortableTask({ task, onClick }: { task: Task, onClick: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onClick}
+      className="group bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:scale-[1.01] hover:shadow-xl hover:shadow-on-surface/5 transition-all duration-200 cursor-pointer border border-outline-variant/5 touch-none"
+    >
+      {task.category && (
+        <div className="flex gap-2 mb-4">
+          <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{task.category}</span>
+        </div>
+      )}
+      <h4 className="font-semibold text-on-surface mb-6 leading-snug">{task.title}</h4>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-on-surface-variant/60">
+          <CalendarIcon className="w-4 h-4" />
+          <span className="text-xs font-medium">{task.dueDate || 'No date'}</span>
+        </div>
+        <div className="flex -space-x-2">
+          {task.assignees.map((a, i) => (
+            <div key={i} className="w-6 h-6 rounded-full bg-primary-fixed ring-2 ring-surface-container-lowest flex items-center justify-center text-[10px] text-white font-bold">
+              {a[0]}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTask, onShowToast, teamMembers }: { 
   tasks: Task[], 
   activeProject: Project | null,
   onTaskClick: (task: Task) => void,
   onAddTask: (status?: Status) => void,
-  onShowToast: (msg: string) => void
+  onUpdateTask: (task: Task) => void,
+  onShowToast: (msg: string) => void,
+  teamMembers: TeamMember[]
 }) {
   const [activeTab, setActiveTab] = useState('Board');
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 3)); // April 2026
@@ -1386,6 +1401,42 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onShowToas
   const handlePrevMonth = () => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)));
   const handleNextMonth = () => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)));
   const handleToday = () => setCurrentMonth(new Date(2026, 3));
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    const activeTask = tasks.find(t => t.id === activeId);
+    if (!activeTask) return;
+
+    // If dropped over a column (column id is the status)
+    if (columns.includes(overId as Status)) {
+      if (activeTask.status !== overId) {
+        onUpdateTask({ ...activeTask, status: overId as Status });
+      }
+      return;
+    }
+
+    // If dropped over another task
+    const overTask = tasks.find(t => t.id === overId);
+    if (overTask && activeTask.status !== overTask.status) {
+      onUpdateTask({ ...activeTask, status: overTask.status });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1405,10 +1456,12 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onShowToas
             </h2>
           </div>
           <div className="flex -space-x-3">
-            {MOCK_TEAM.map(m => (
+            {teamMembers.slice(0, 3).map(m => (
               <img key={m.id} src={m.avatar} alt={m.name} className="w-10 h-10 rounded-full ring-4 ring-surface object-cover" referrerPolicy="no-referrer" />
             ))}
-            <div className="w-10 h-10 rounded-full bg-surface-container-highest ring-4 ring-surface flex items-center justify-center text-xs font-bold text-on-surface-variant">+4</div>
+            {teamMembers.length > 3 && (
+              <div className="w-10 h-10 rounded-full bg-surface-container-highest ring-4 ring-surface flex items-center justify-center text-xs font-bold text-on-surface-variant">+{teamMembers.length - 3}</div>
+            )}
           </div>
         </div>
 
@@ -1521,63 +1574,54 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onShowToas
           transition={{ duration: 0.2 }}
         >
           {activeTab === 'Board' ? (
-            <div className="flex gap-8 overflow-x-auto pb-10 no-scrollbar min-h-[600px]">
-              {columns.map(status => (
-                <div key={status} className="flex-shrink-0 w-80 flex flex-col">
-                  <div className="flex items-center justify-between px-4 mb-6">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-headline font-bold text-lg">{status}</h3>
-                      <span className="bg-surface-container-high px-2 py-0.5 rounded-full text-xs font-bold text-on-surface-variant">
-                        {tasks.filter(t => t.status === status).length}
-                      </span>
-                    </div>
-                    <button 
-                      onClick={() => onAddTask(status)}
-                      className="text-on-surface-variant/40 hover:text-primary transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {tasks.filter(t => t.status === status).map(task => (
-                      <motion.div 
-                        layoutId={task.id}
-                        key={task.id}
-                        onClick={() => onTaskClick(task)}
-                        className="group bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:scale-[1.01] hover:shadow-xl hover:shadow-on-surface/5 transition-all duration-200 cursor-pointer border border-outline-variant/5"
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex gap-8 overflow-x-auto pb-10 no-scrollbar min-h-[600px]">
+                {columns.map(status => (
+                  <div key={status} className="flex-shrink-0 w-80 flex flex-col">
+                    <div className="flex items-center justify-between px-4 mb-6">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-headline font-bold text-lg">{status}</h3>
+                        <span className="bg-surface-container-high px-2 py-0.5 rounded-full text-xs font-bold text-on-surface-variant">
+                          {tasks.filter(t => t.status === status).length}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={() => onAddTask(status)}
+                        className="text-on-surface-variant/40 hover:text-primary transition-colors"
                       >
-                        {task.category && (
-                          <div className="flex gap-2 mb-4">
-                            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{task.category}</span>
-                          </div>
-                        )}
-                        <h4 className="font-semibold text-on-surface mb-6 leading-snug">{task.title}</h4>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-on-surface-variant/60">
-                            <CalendarIcon className="w-4 h-4" />
-                            <span className="text-xs font-medium">{task.dueDate || 'No date'}</span>
-                          </div>
-                          <div className="flex -space-x-2">
-                            {task.assignees.map((a, i) => (
-                              <div key={i} className="w-6 h-6 rounded-full bg-primary-fixed ring-2 ring-surface-container-lowest flex items-center justify-center text-[10px] text-white font-bold">
-                                {a[0]}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                    <button 
-                      onClick={() => onAddTask(status)}
-                      className="w-full py-4 border-2 border-dashed border-outline-variant/30 rounded-2xl text-on-surface-variant/40 font-bold text-sm hover:border-primary/40 hover:text-primary transition-all duration-200"
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    <SortableContext 
+                      id={status}
+                      items={tasks.filter(t => t.status === status).map(t => t.id)}
+                      strategy={verticalListSortingStrategy}
                     >
-                      + Add Task
-                    </button>
+                      <div className="space-y-4 flex-1 min-h-[100px]">
+                        {tasks.filter(t => t.status === status).map(task => (
+                          <SortableTask 
+                            key={task.id} 
+                            task={task} 
+                            onClick={() => onTaskClick(task)} 
+                          />
+                        ))}
+                        <button 
+                          onClick={() => onAddTask(status)}
+                          className="w-full py-4 border-2 border-dashed border-outline-variant/30 rounded-2xl text-on-surface-variant/40 font-bold text-sm hover:border-primary/40 hover:text-primary transition-all duration-200"
+                        >
+                          + Add Task
+                        </button>
+                      </div>
+                    </SortableContext>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </DndContext>
           ) : activeTab === 'Calendar' ? (
             <CalendarView />
           ) : (
@@ -1698,7 +1742,7 @@ function CalendarView() {
   );
 }
 
-function TeamView() {
+function TeamView({ teamMembers }: { teamMembers: TeamMember[] }) {
   const [view, setView] = useState('Grid View');
 
   return (
@@ -1751,7 +1795,7 @@ function TeamView() {
           </div>
         </div>
 
-        {MOCK_TEAM.map(member => (
+        {teamMembers.map(member => (
           <div key={member.id} className="lg:col-span-4 bg-surface-container-lowest rounded-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-ambient flex flex-col gap-6 border border-outline-variant/5">
             <div className="flex items-center gap-4">
               <div className="relative shrink-0">
@@ -1803,7 +1847,7 @@ function TeamView() {
             <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Insight Engine</span>
             <h3 className="text-2xl font-bold leading-tight mb-4 font-headline">Burnout Protection Active</h3>
             <p className="text-on-primary/80 text-sm leading-relaxed mb-8">
-              AI has detected three tasks that can be reassigned from <strong>David Roark</strong> to <strong>Mia Kovac</strong> to rebalance capacity.
+              AI is monitoring team capacity to prevent burnout and optimize task distribution across active streams.
             </p>
           </div>
           <button className="relative z-10 w-full bg-white text-primary py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-xl hover:bg-on-primary-fixed-variant hover:text-white transition-all">
@@ -1815,14 +1859,18 @@ function TeamView() {
   );
 }
 
-function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: { 
+function TaskDetailView({ task, allTasks, onClose, onUpdateTask, teamMembers }: { 
   task: Task, 
   allTasks: Task[],
   onClose: () => void,
-  onUpdateTask: (task: Task) => void
+  onUpdateTask: (task: Task) => Promise<{ success: boolean; error?: any }>,
+  teamMembers: TeamMember[]
 }) {
   const [editedTask, setEditedTask] = useState<Task>(task);
   const [errors, setErrors] = useState<{ title?: string; assignees?: string; dueDate?: string }>({});
+  const [newSubtaskLabel, setNewSubtaskLabel] = useState('');
+  const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setEditedTask(task);
@@ -1845,6 +1893,30 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
     onUpdateTask(updated);
   };
 
+  const handleAddSubtask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubtaskLabel.trim()) return;
+    const newSubtask = { label: newSubtaskLabel.trim(), done: false };
+    const updated = { 
+      ...editedTask, 
+      subtasks: [...(editedTask.subtasks || []), newSubtask] 
+    };
+    setEditedTask(updated);
+    setNewSubtaskLabel('');
+    onUpdateTask(updated);
+  };
+
+  const toggleAssignee = (memberName: string) => {
+    const currentAssignees = editedTask.assignees || [];
+    const updatedAssignees = currentAssignees.includes(memberName)
+      ? currentAssignees.filter(name => name !== memberName)
+      : [...currentAssignees, memberName];
+    
+    const updated = { ...editedTask, assignees: updatedAssignees };
+    setEditedTask(updated);
+    onUpdateTask(updated);
+  };
+
   const validate = () => {
     const newErrors: typeof errors = {};
     if (!editedTask.title.trim()) newErrors.title = 'Title is required';
@@ -1858,9 +1930,14 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (validate()) {
-      onUpdateTask(editedTask);
+      setIsSaving(true);
+      const result = await onUpdateTask(editedTask);
+      setIsSaving(false);
+      if (result.success) {
+        onClose();
+      }
     }
   };
 
@@ -1936,21 +2013,79 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
 
         <div className="grid grid-cols-2 gap-6 mb-12">
           <div className={cn(
-            "bg-surface-container-low p-5 rounded-2xl flex items-center gap-4 transition-all",
+            "bg-surface-container-low p-5 rounded-2xl flex items-center gap-4 transition-all relative",
             errors.assignees && "ring-2 ring-error"
           )}>
-            <div className="w-12 h-12 rounded-full bg-primary-fixed ring-2 ring-white flex items-center justify-center text-white font-bold shrink-0">
-              {editedTask.assignees[0]?.[0] || '?'}
+            <div className="flex -space-x-2 shrink-0">
+              {editedTask.assignees.length > 0 ? (
+                editedTask.assignees.slice(0, 3).map((name, i) => {
+                  const member = teamMembers.find(m => m.name === name);
+                  return (
+                    <div key={i} className="w-10 h-10 rounded-full bg-primary-fixed ring-2 ring-white flex items-center justify-center text-white font-bold overflow-hidden">
+                      {member ? (
+                        <img src={member.avatar} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        name[0]
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant/40">
+                  <Users className="w-5 h-5" />
+                </div>
+              )}
+              {editedTask.assignees.length > 3 && (
+                <div className="w-10 h-10 rounded-full bg-surface-container-highest ring-2 ring-white flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
+                  +{editedTask.assignees.length - 3}
+                </div>
+              )}
             </div>
             <div className="flex-1">
-              <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-tighter">Assignee</p>
-              <input
-                type="text"
-                value={editedTask.assignees.join(', ')}
-                onChange={(e) => setEditedTask({ ...editedTask, assignees: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                className="w-full text-sm font-bold text-on-surface bg-transparent border-none focus:ring-0 p-0"
-                placeholder="Add assignees..."
-              />
+              <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-tighter">Assignees</p>
+              <button 
+                onClick={() => setIsAssigneeDropdownOpen(!isAssigneeDropdownOpen)}
+                className="w-full text-left text-sm font-bold text-on-surface truncate"
+              >
+                {editedTask.assignees.length > 0 ? editedTask.assignees.join(', ') : 'Add assignees...'}
+              </button>
+              {errors.assignees && <p className="text-error text-[10px] font-bold mt-1">{errors.assignees}</p>}
+              
+              <AnimatePresence>
+                {isAssigneeDropdownOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute top-full left-0 right-0 mt-2 bg-surface-bright border border-outline-variant/10 rounded-xl shadow-ambient z-50 max-h-60 overflow-y-auto p-2"
+                  >
+                    {teamMembers.length > 0 ? (
+                      teamMembers.map(member => (
+                        <button
+                          key={member.id}
+                          onClick={() => toggleAssignee(member.name)}
+                          className={cn(
+                            "w-full flex items-center gap-3 p-2 rounded-lg transition-colors",
+                            editedTask.assignees.includes(member.name) ? "bg-primary/10" : "hover:bg-surface-container"
+                          )}
+                        >
+                          <div className="w-8 h-8 rounded-full overflow-hidden bg-surface-container">
+                            <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                          <span className="text-sm font-medium text-on-surface">{member.name}</span>
+                          {editedTask.assignees.includes(member.name) && (
+                            <div className="ml-auto w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                              <Plus className="w-3 h-3 text-white rotate-45" />
+                            </div>
+                          )}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-xs text-on-surface-variant/60 p-4 text-center">No team members found.</p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
           <div className={cn(
@@ -1963,11 +2098,14 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
             <div className="flex-1">
               <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-tighter">Due Date</p>
               <input
-                type="text"
+                type="date"
                 value={editedTask.dueDate || ''}
-                onChange={(e) => setEditedTask({ ...editedTask, dueDate: e.target.value })}
+                onChange={(e) => {
+                  const updated = { ...editedTask, dueDate: e.target.value };
+                  setEditedTask(updated);
+                  onUpdateTask(updated);
+                }}
                 className="w-full text-sm font-bold text-on-surface bg-transparent border-none focus:ring-0 p-0"
-                placeholder="Set due date..."
               />
             </div>
           </div>
@@ -2059,28 +2197,61 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
               {editedTask.subtasks?.filter(s => s.done).length || 0} / {editedTask.subtasks?.length || 0} Completed
             </span>
           </div>
+          
+          <form onSubmit={handleAddSubtask} className="flex gap-2 mb-4">
+            <input 
+              type="text"
+              value={newSubtaskLabel}
+              onChange={(e) => setNewSubtaskLabel(e.target.value)}
+              placeholder="Add a new subtask..."
+              className="flex-1 bg-surface-container border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary"
+            />
+            <button 
+              type="submit"
+              className="px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary-dim transition-colors"
+            >
+              Add
+            </button>
+          </form>
+
           <div className="bg-surface-container-high rounded-2xl overflow-hidden">
-            {(editedTask.subtasks || [
-              { label: 'Initial research', done: false },
-              { label: 'Drafting proposal', done: false }
-            ]).map((st, i) => (
+            {(editedTask.subtasks || []).map((st, i) => (
               <div 
                 key={i} 
-                onClick={() => handleToggleSubtask(i)}
                 className={cn(
-                  "p-4 border-b border-white/50 flex items-center gap-4 cursor-pointer hover:bg-white/10 transition-colors",
-                  st.done ? "bg-white/20" : ""
+                  "p-4 border-b border-white/50 flex items-center gap-4 group transition-colors",
+                  st.done ? "bg-white/10" : "hover:bg-white/5"
                 )}
               >
-                <input 
-                  type="checkbox" 
-                  checked={st.done} 
-                  onChange={() => {}} // Handled by parent div click
-                  className="rounded border-outline-variant text-primary focus:ring-primary h-5 w-5 pointer-events-none" 
-                />
-                <span className={cn("text-sm font-medium text-on-surface", st.done && "line-through opacity-50")}>{st.label}</span>
+                <div 
+                  onClick={() => handleToggleSubtask(i)}
+                  className="flex items-center gap-4 flex-1 cursor-pointer"
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={st.done} 
+                    readOnly
+                    className="rounded border-outline-variant text-primary focus:ring-primary h-5 w-5" 
+                  />
+                  <span className={cn("text-sm font-medium text-on-surface", st.done && "line-through opacity-50")}>{st.label}</span>
+                </div>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newSubtasks = editedTask.subtasks?.filter((_, index) => index !== i);
+                    const updated = { ...editedTask, subtasks: newSubtasks };
+                    setEditedTask(updated);
+                    onUpdateTask(updated);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-error/10 rounded-md text-on-surface-variant/40 hover:text-error transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             ))}
+            {(editedTask.subtasks || []).length === 0 && (
+              <p className="text-xs text-on-surface-variant/60 p-8 text-center italic">No subtasks yet. Add one above.</p>
+            )}
           </div>
         </section>
       </div>
@@ -2099,9 +2270,11 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask }: {
           <div className="h-6 w-[2px] bg-surface-container" />
           <button 
             onClick={handleSave}
-            className="px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+            disabled={isSaving}
+            className="px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
           >
-            Save Changes
+            {isSaving && <RefreshCw className="w-4 h-4 animate-spin" />}
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -2197,75 +2370,6 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
     onShowToast("Browser cache cleared. Please refresh the page.");
   };
 
-  const handleGodModeLogin = async () => {
-    setIsLoading(true);
-    const emailLower = email.trim().toLowerCase();
-    const password = ADMIN_PASSWORDS[emailLower];
-    
-    if (!password) {
-      onShowToast("Error: No password found for this admin email.");
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      console.log('Attempting GOD mode login for:', emailLower);
-      setStatusMessage("Authenticating admin...");
-      // Try Sign In first
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: emailLower,
-        password: password
-      });
-      
-      if (signInError) {
-        console.log('GOD mode sign-in error:', signInError.message);
-        if (signInError.message.includes("Invalid login credentials") || signInError.message.includes("Email not confirmed")) {
-          if (signInError.message.includes("Email not confirmed")) {
-            setStatusMessage("Email not confirmed. Check your inbox!");
-            onShowToast("Admin account exists but email is not confirmed. Please check your inbox!");
-            setIsLoading(false);
-            return;
-          }
-
-          console.log('User not found or invalid credentials, attempting auto-onboarding');
-          setStatusMessage("Account not found. Initializing admin...");
-          // Auto-onboard if not found
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: emailLower,
-            password: password
-          });
-          
-          if (signUpError) {
-            if (signUpError.message.includes("already registered")) {
-              setStatusMessage("Password mismatch. Reset in Supabase.");
-              onShowToast("Admin account already exists but password doesn't match. Please check your email or reset password in Supabase.");
-            } else {
-              throw signUpError;
-            }
-          } else if (signUpData.session) {
-            setStatusMessage("GOD Mode Activated!");
-            onShowToast("GOD mode activated! Account created and signed in.");
-          } else if (signUpData.user) {
-            setStatusMessage("Confirmation Required. Check Email!");
-            onShowToast("Admin account initialized! CRITICAL: You MUST check your email and click the confirmation link before you can log in.");
-          }
-        } else {
-          throw signInError;
-        }
-      } else if (data.session) {
-        setStatusMessage("GOD Mode Activated!");
-        onShowToast("GOD mode activated! Welcome back.");
-      }
-    } catch (err: any) {
-      console.error('GOD mode error:', err);
-      setLastError(err);
-      setStatusMessage(`Error: ${err.message}`);
-      onShowToast(`GOD mode failed: ${err.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
@@ -2273,12 +2377,6 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
       return;
     }
     if (!email.trim()) return;
-
-    // If it's an admin email, we use the GOD mode logic automatically
-    if (isAdminEmail && !isSignUp) {
-      handleGodModeLogin();
-      return;
-    }
 
     if (!password.trim()) return;
     
@@ -2333,7 +2431,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
       <div className="max-w-md w-full bg-surface-bright/80 backdrop-blur-2xl p-12 rounded-[3rem] shadow-ambient border border-white/20 text-center relative z-10">
         <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center text-white shadow-2xl shadow-primary/40 mx-auto mb-10 transform -rotate-6 hover:rotate-0 transition-transform duration-500 overflow-hidden">
           <img 
-            src="/logo.jpg" 
+            src="logo.jpg" 
             alt="Beached Street Logo" 
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -2432,31 +2530,6 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
         </form>
 
         <div className="mt-6 flex flex-col gap-3">
-          {isAdminEmail && !isSignUp && (
-            <div className="space-y-3">
-              <button 
-                onClick={handleGodModeLogin}
-                disabled={isLoading}
-                className="w-full py-4 bg-primary text-white border-none rounded-2xl text-sm font-bold hover:scale-[0.98] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                Activate GOD Mode
-              </button>
-              
-              <button 
-                onClick={() => {
-                  console.log('EMERGENCY BYPASS ACTIVATED');
-                  setIsBypassed(true);
-                  onShowToast("Emergency Bypass Activated! Welcome.");
-                }}
-                className="w-full py-3 bg-warning/10 text-warning border border-warning/20 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-warning/20 transition-all flex items-center justify-center gap-2"
-              >
-                <Zap className="w-3 h-3" />
-                Emergency Bypass (If Login Fails)
-              </button>
-            </div>
-          )}
-          
           <button 
             onClick={() => setIsSignUp(!isSignUp)}
             className="w-full py-4 border border-outline-variant/20 rounded-2xl text-sm font-bold text-on-surface hover:bg-surface-container transition-all"
