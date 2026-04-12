@@ -37,21 +37,6 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all access to tasks" ON tasks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all access to projects" ON projects FOR ALL USING (true) WITH CHECK (true);
 
--- Create invitations table
-CREATE TABLE IF NOT EXISTS invitations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT UNIQUE NOT NULL,
-  invited_by TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Enable RLS
-ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
-
--- Create policies
-CREATE POLICY "Allow admins to manage invitations" ON invitations FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow anyone to check their invitation" ON invitations FOR SELECT USING (true);
-
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS profiles (
   "id" TEXT PRIMARY KEY,

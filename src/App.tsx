@@ -69,9 +69,9 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const ADMIN_EMAILS = ['similietimor@gmail.com', 'liberty.nahak@similie.org'].map(e => e.toLowerCase());
+const ADMIN_EMAILS = ['similietimor@gmail.com', 'liberty.nahak@similie.org', 'youremail@beachedstreetproperty.netlify.app'].map(e => e.toLowerCase());
 
-type View = 'dashboard' | 'projects' | 'calendar' | 'team' | 'settings' | 'profile' | 'invites';
+type View = 'dashboard' | 'projects' | 'calendar' | 'team' | 'settings' | 'profile';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -89,10 +89,15 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
-  const [isInvited, setIsInvited] = useState<boolean | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const [isBypassed, setIsBypassed] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -130,62 +135,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!session?.user) {
-      setIsInvited(null);
-      return;
-    }
-
-    const checkInvitation = async () => {
-      const email = session.user.email?.toLowerCase();
-      if (!email) return;
-
-      // Explicit Admin Bypass: Always allow admins even if DB check fails
-      if (ADMIN_EMAILS.includes(email)) {
-        console.log(`Admin detected (${email}), bypassing invitation check`);
-        setIsInvited(true);
-        return;
-      }
-
-      console.log(`Checking invitation for: ${email}`);
-
-      try {
-        const { data, error } = await supabase
-          .from('invitations')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (data) {
-          setIsInvited(true);
-        } else {
-          setIsInvited(false);
-        }
-      } catch (err: any) {
-        console.error('Invitation check error:', err);
-        if (err.message === 'Failed to fetch') {
-          setConnectionError("Unable to connect to Supabase to verify your access. Please check your internet connection or project status.");
-        } else {
-          setConnectionError(err.message);
-        }
-        // Fallback to false if we can't verify, but maybe we should allow retry
-        setIsInvited(false); 
-      }
-    };
-
-    checkInvitation();
-  }, [session]);
-
-  const [currentTime, setCurrentTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!session?.user || isInvited === false || !isSupabaseConfigured) return;
+    if (!session?.user || !isSupabaseConfigured) return;
 
     const loadData = async () => {
       setIsLoading(true);
@@ -256,11 +206,12 @@ export default function App() {
       }
     };
     loadData();
-  }, [session, isInvited]);
+  }, [session]);
 
   const showToast = (message: string) => {
     setToast(message);
-    setTimeout(() => setToast(null), 3000);
+    const duration = message.length > 50 ? 8000 : 4000;
+    setTimeout(() => setToast(null), duration);
   };
 
   const handleLogout = async () => {
@@ -271,7 +222,6 @@ export default function App() {
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
       setSession(null);
-      setIsInvited(null);
       setUserProfile(null);
       console.log('Logged out successfully');
     } catch (error) {
@@ -292,56 +242,6 @@ export default function App() {
 
   if (!session && !isBypassed) {
     return <LoginView onShowToast={showToast} setSession={setSession} setIsBypassed={setIsBypassed} />;
-  }
-
-  if (isInvited === false && !isBypassed) {
-    return <UnauthorizedView userEmail={session?.user?.email} onLogout={handleLogout} connectionError={connectionError} />;
-  }
-
-  if (isInvited === null && !isBypassed) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-surface">
-        <div className="flex flex-col items-center gap-6 max-w-sm text-center px-6">
-          {connectionError ? (
-            <>
-              <div className="w-16 h-16 rounded-2xl bg-error/10 flex items-center justify-center text-error mb-2">
-                <WifiOff className="w-8 h-8" />
-              </div>
-              <h2 className="text-xl font-bold font-headline">Connection Error</h2>
-              <p className="text-on-surface-variant/60 text-sm leading-relaxed">
-                {connectionError}
-              </p>
-              <div className="flex flex-col w-full gap-3">
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="w-full py-3 bg-primary text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Retry
-                </button>
-                <button 
-                  onClick={handleLogout}
-                  className="w-full py-3 bg-surface-container text-on-surface-variant font-bold rounded-xl"
-                >
-                  Sign Out
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-on-surface-variant font-bold uppercase tracking-widest text-xs">Verifying Access...</p>
-              <button 
-                onClick={handleLogout}
-                className="mt-8 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/20 hover:text-on-surface-variant/60 transition-colors"
-              >
-                Cancel & Sign Out
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
   }
 
   const isDarkMode = userProfile?.preferences.darkMode || false;
@@ -405,27 +305,6 @@ export default function App() {
               {isSidebarOpen && <span className="font-headline">{item.label}</span>}
             </button>
           ))}
-          
-          {isAdmin && (
-            <button
-              onClick={() => setCurrentView('invites')}
-              className={cn(
-                "w-full flex items-center gap-3 py-3 px-8 transition-all duration-200 group relative",
-                currentView === 'invites' 
-                  ? "text-on-surface font-semibold bg-surface-container-lowest" 
-                  : "text-on-surface-variant/60 font-medium hover:bg-surface-container-high"
-              )}
-            >
-              {currentView === 'invites' && (
-                <motion.div 
-                  layoutId="active-nav"
-                  className="absolute left-0 top-0 bottom-0 w-1 bg-primary"
-                />
-              )}
-              <UserPlus className={cn("w-5 h-5 shrink-0", currentView === 'invites' ? "text-primary" : "text-on-surface-variant/60 group-hover:text-primary")} />
-              {isSidebarOpen && <span className="font-headline">Invites</span>}
-            </button>
-          )}
         </nav>
 
         <div className="px-8 mt-auto space-y-2">
@@ -684,9 +563,6 @@ export default function App() {
                     }
                   }}
                 />
-              )}
-              {currentView === 'invites' && isAdmin && (
-                <InvitesView onShowToast={showToast} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -2332,7 +2208,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
       let status: 'ok' | 'error' = 'error';
       if (isSupabaseConfigured) {
         try {
-          const { error } = await supabase.from('invitations').select('count', { count: 'exact', head: true });
+          const { error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
           if (!error) status = 'ok';
         } catch (e) {
           status = 'error';
@@ -2353,7 +2229,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
   const testConnection = async () => {
     setIsTesting(true);
     try {
-      const { error } = await supabase.from('invitations').select('count', { count: 'exact', head: true });
+      const { error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
       if (error) throw error;
       onShowToast("Connection successful! Supabase is reachable.");
     } catch (err: any) {
@@ -2390,11 +2266,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
       if (error) {
         console.error('Login error:', error);
         if (error.message.includes("Invalid login credentials")) {
-          if (isAdminEmail && !isSignUp) {
-            onShowToast("Account not found. If this is your first time, please click 'Create one' below to setup your admin account.");
-          } else {
-            onShowToast("Invalid credentials. If you don't have an account, click 'Create one' below.");
-          }
+          onShowToast("Invalid credentials. If you don't have an account, click 'Create one' below.");
         } else if (error.message.includes("Email not confirmed")) {
           onShowToast("Please check your inbox and confirm your email before signing in.");
         } else if (error.message === 'Failed to fetch') {
@@ -2474,7 +2346,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
           <div className="mb-6 p-4 bg-primary/5 border border-primary/10 rounded-2xl flex items-center gap-3 text-left">
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-xs text-on-surface-variant font-medium leading-tight">
-              Note: You are creating an admin account. You will need to confirm your email after signing up.
+              Welcome! You are creating a new account. You will need to confirm your email after signing up.
             </p>
           </div>
         )}
@@ -2507,7 +2379,7 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={isAdminEmail && !isSignUp ? "Password (Auto-filled for Admin)" : "Password"}
+                placeholder={isAdminEmail && !isSignUp ? "Password (Optional for Admin Bypass)" : "Password"}
                 className="w-full pl-12 pr-12 py-4 bg-surface-container border-none rounded-2xl focus:ring-2 focus:ring-primary text-sm font-medium"
                 required={!isAdminEmail || isSignUp}
               />
@@ -2519,14 +2391,32 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
                 {showPassword ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
             </div>
-          <button 
-            disabled={isLoading}
-            className="w-full py-5 bg-on-surface text-surface font-bold rounded-2xl flex items-center justify-center gap-4 hover:scale-[0.98] active:scale-95 transition-all shadow-2xl hover:shadow-primary/20 disabled:opacity-50"
-          >
-            {isLoading 
-              ? (isSignUp ? "Creating..." : "Signing in...") 
-              : (isSignUp ? "Create Account" : "Sign In")}
-          </button>
+          
+          <div className="flex flex-col gap-3">
+            <button 
+              disabled={isLoading}
+              className="w-full py-5 bg-on-surface text-surface font-bold rounded-2xl flex items-center justify-center gap-4 hover:scale-[0.98] active:scale-95 transition-all shadow-2xl hover:shadow-primary/20 disabled:opacity-50"
+            >
+              {isLoading 
+                ? (isSignUp ? "Creating..." : "Signing in...") 
+                : (isSignUp ? "Create Account" : "Sign In")}
+            </button>
+
+            {isAdminEmail && !isSignUp && (
+              <button 
+                type="button"
+                onClick={() => {
+                  console.log('FORCING ADMIN ACCESS BYPASS');
+                  setIsBypassed(true);
+                  onShowToast("Bypass activated! Welcome Admin.");
+                }}
+                className="w-full py-4 bg-primary/10 text-primary font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-primary/20 transition-all border border-primary/20"
+              >
+                <ShieldCheck className="w-5 h-5" />
+                Sign in as Admin (Bypass)
+              </button>
+            )}
+          </div>
         </form>
 
         <div className="mt-6 flex flex-col gap-3">
@@ -2575,18 +2465,6 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
                 >
                   Refresh Auth Session
                 </button>
-                {isAdminEmail && (
-                  <button 
-                    onClick={() => {
-                      console.log('FORCING ADMIN ACCESS BYPASS');
-                      setIsBypassed(true);
-                      onShowToast("Bypass activated! Welcome Admin.");
-                    }}
-                    className="w-full py-2 bg-warning/10 text-warning rounded-lg font-bold hover:bg-warning/20 transition-all"
-                  >
-                    Force Admin Access (Bypass)
-                  </button>
-                )}
                 <button 
                   onClick={clearCache}
                   className="w-full py-2 bg-error/10 text-error rounded-lg font-bold hover:bg-error/20 transition-all"
@@ -2616,211 +2494,3 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
   );
 }
 
-function UnauthorizedView({ userEmail, onLogout, connectionError }: { userEmail: string | undefined, onLogout: () => void, connectionError?: string | null }) {
-  return (
-    <div className="flex h-screen items-center justify-center bg-surface p-6">
-      <div className="max-w-md w-full bg-surface-bright p-12 rounded-[2.5rem] shadow-ambient border border-outline-variant/10 text-center">
-        {connectionError ? (
-          <>
-            <div className="w-16 h-16 rounded-2xl bg-error/10 flex items-center justify-center text-error mx-auto mb-8">
-              <WifiOff className="w-8 h-8" />
-            </div>
-            <h1 className="text-3xl font-extrabold text-on-surface font-headline mb-4 tracking-tight">Connection Error</h1>
-            <p className="text-on-surface-variant/60 mb-10 leading-relaxed font-medium">
-              {connectionError}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="w-16 h-16 rounded-2xl bg-error/10 flex items-center justify-center text-error mx-auto mb-8">
-              <AlertCircle className="w-8 h-8" />
-            </div>
-            <h1 className="text-3xl font-extrabold text-on-surface font-headline mb-4 tracking-tight">Access Restricted</h1>
-            <p className="text-on-surface-variant/60 mb-4 leading-relaxed font-medium">
-              The email <span className="text-on-surface font-bold">{userEmail || 'Unknown'}</span> has not been invited to join this workspace.
-            </p>
-            <p className="text-xs text-on-surface-variant/40 mb-10">
-              Please contact an administrator to request access.
-            </p>
-          </>
-        )}
-        <div className="space-y-3">
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-4 bg-primary text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:scale-[0.98] transition-all shadow-lg shadow-primary/20"
-          >
-            <RefreshCw className="w-5 h-5" />
-            {connectionError ? "Retry Connection" : "Check Again"}
-          </button>
-          <button 
-            onClick={onLogout}
-            className="w-full py-4 bg-surface-container text-on-surface-variant font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-surface-container-high transition-all"
-          >
-            <LogOut className="w-5 h-5" />
-            Sign Out
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InvitesView({ onShowToast }: { onShowToast: (msg: string) => void }) {
-  const [email, setEmail] = useState('');
-  const [invites, setInvites] = useState<any[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    loadInvites();
-  }, []);
-
-  const loadInvites = async () => {
-    try {
-      const { data, error } = await supabase.from('invitations').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      if (data) setInvites(data);
-    } catch (err: any) {
-      console.error('Load invites error:', err);
-      onShowToast(`Failed to load invites: ${err.message}`);
-    }
-  };
-
-  const handleInvite = async (e: FormEvent) => {
-    e.preventDefault();
-    const inviteEmail = email.trim();
-    if (!inviteEmail) return;
-    setIsSubmitting(true);
-    try {
-      // 1. Record in database
-      const { error: dbError } = await supabase.from('invitations').insert({ email: inviteEmail });
-      if (dbError) {
-        if (dbError.code === '23505') onShowToast("User already invited");
-        else throw dbError;
-        setIsSubmitting(false);
-        return;
-      }
-
-      // 2. Send real email via backend
-      try {
-        const response = await fetch('/api/invite', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email: inviteEmail,
-            inviteUrl: window.location.origin
-          }),
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to send email');
-        
-        if (result.warning) {
-          onShowToast(result.message);
-        } else {
-          onShowToast(result.message || "Invitation sent successfully!");
-        }
-      } catch (emailErr: any) {
-        console.error('Email sending failed:', emailErr);
-        onShowToast("User added to workspace, but email notification failed. Please share the URL manually.");
-      }
-
-      setEmail('');
-      loadInvites();
-    } catch (err: any) {
-      onShowToast(`Error: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const removeInvite = async (id: string) => {
-    const { error } = await supabase.from('invitations').delete().eq('id', id);
-    if (!error) {
-      onShowToast("Invitation removed");
-      loadInvites();
-    }
-  };
-
-  return (
-    <div className="space-y-12">
-      <header className="mb-12">
-        <h2 className="text-5xl font-extrabold text-on-surface tracking-tighter font-headline mb-4">Workspace Invites</h2>
-        <p className="text-on-surface-variant/60 text-lg max-w-2xl font-medium">
-          Manage access to your premium workspace. Only invited users can sign in.
-        </p>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        <div className="lg:col-span-1">
-          <div className="bg-surface-bright p-8 rounded-[2rem] shadow-ambient border border-outline-variant/10">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                <UserPlus className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold font-headline">Invite New User</h3>
-            </div>
-            <form onSubmit={handleInvite} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-2 ml-1">Email Address</label>
-                <input 
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="colleague@example.com"
-                  className="w-full px-5 py-4 bg-surface-container border-none rounded-2xl focus:ring-2 focus:ring-primary text-sm font-medium"
-                  required
-                />
-              </div>
-              <button 
-                disabled={isSubmitting}
-                className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                {isSubmitting ? "Inviting..." : "Send Invitation"}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2">
-          <div className="bg-surface-bright rounded-[2rem] shadow-ambient border border-outline-variant/10 overflow-hidden">
-            <div className="p-8 border-b border-outline-variant/10 flex justify-between items-center">
-              <h3 className="text-xl font-bold font-headline">Invited Users</h3>
-              <span className="px-3 py-1 bg-surface-container rounded-full text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                {invites.length} Total
-              </span>
-            </div>
-            <div className="divide-y divide-outline-variant/10">
-              {invites.length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-on-surface-variant/40 font-medium italic">No invitations sent yet.</p>
-                </div>
-              ) : (
-                invites.map((invite) => (
-                  <div key={invite.id} className="p-6 flex items-center justify-between hover:bg-surface-container/30 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant">
-                        <Mail className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-on-surface">{invite.email}</p>
-                        <p className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest font-bold">
-                          Invited on {new Date(invite.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => removeInvite(invite.id)}
-                      className="p-2 text-on-surface-variant/40 hover:text-error hover:bg-error/10 rounded-xl transition-all"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
