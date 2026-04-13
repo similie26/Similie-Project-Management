@@ -33,7 +33,8 @@ import {
   WifiOff,
   RefreshCw,
   ExternalLink,
-  Zap
+  Zap,
+  Activity as ActivityIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -69,7 +70,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const ADMIN_EMAILS = ['similietimor@gmail.com', 'liberty.nahak@similie.org', 'youremail@beachedstreetproperty.netlify.app'].map(e => e.toLowerCase());
+const ADMIN_EMAILS = ['similietimor@gmail.com', 'liberty.nahak@similie.org'].map(e => e.toLowerCase());
 
 type View = 'dashboard' | 'projects' | 'calendar' | 'team' | 'settings' | 'profile';
 
@@ -83,6 +84,8 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [newProjectData, setNewProjectData] = useState({ name: '', category: 'Design' });
@@ -156,6 +159,7 @@ export default function App() {
         const { data: teamData, error: teamError } = await supabase.from('profiles').select('*');
         if (teamError) throw teamError;
         if (teamData) {
+          setAllProfiles(teamData as UserProfile[]);
           const members: TeamMember[] = teamData.map(p => ({
             id: p.id,
             name: p.name,
@@ -244,7 +248,7 @@ export default function App() {
     return <LoginView onShowToast={showToast} setSession={setSession} setIsBypassed={setIsBypassed} />;
   }
 
-  const isDarkMode = userProfile?.preferences.darkMode || false;
+  const isDarkMode = userProfile?.preferences?.darkMode || false;
 
   return (
     <div className={cn(
@@ -406,10 +410,13 @@ export default function App() {
               <HelpCircle className="w-5 h-5" />
             </button>
             <div 
-              onClick={() => setCurrentView('profile')}
+              onClick={() => {
+                setEditingMemberId(null);
+                setCurrentView('profile');
+              }}
               className={cn(
                 "h-10 w-10 rounded-full overflow-hidden border-2 shadow-sm ml-2 ring-2 cursor-pointer transition-all",
-                currentView === 'profile' ? "border-primary ring-primary" : "border-white ring-primary/10 hover:ring-primary"
+                currentView === 'profile' && !editingMemberId ? "border-primary ring-primary" : "border-white ring-primary/10 hover:ring-primary"
               )}
             >
               <img 
@@ -481,6 +488,7 @@ export default function App() {
                     setCurrentView('projects');
                   }}
                   userProfile={userProfile}
+                  teamMembers={teamMembers}
                 />
               )}
               {currentView === 'projects' && (
@@ -494,6 +502,8 @@ export default function App() {
                   onTaskClick={setSelectedTask} 
                   onShowToast={showToast}
                   teamMembers={teamMembers}
+                  projects={projects}
+                  onProjectClick={setSelectedProjectId}
                   onUpdateTask={async (updatedTask) => {
                     const newTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
                     setTasks(newTasks);
@@ -512,7 +522,7 @@ export default function App() {
                     const newTask: Task = {
                       id: Math.random().toString(36).substr(2, 9),
                       title: 'New Task',
-                      status: status || 'Backlog',
+                      status: status || 'To Do',
                       assignees: ['You'],
                       dueDate: 'Tomorrow',
                       priority: 'Medium',
@@ -540,12 +550,26 @@ export default function App() {
                   }}
                 />
               )}
-              {currentView === 'calendar' && <CalendarView />}
-              {currentView === 'team' && <TeamView teamMembers={teamMembers} />}
-              {currentView === 'settings' && <div className="text-center py-20 text-on-surface-variant">Settings view coming soon...</div>}
-              {currentView === 'profile' && userProfile && (
-                <ProfileView 
+              {currentView === 'calendar' && <CalendarView tasks={tasks} />}
+              {currentView === 'team' && <TeamView 
+                teamMembers={teamMembers} 
+                tasks={tasks}
+                projects={projects}
+                isAdmin={isAdmin}
+                onMemberClick={(memberId) => {
+                  if (isAdmin) {
+                    const memberProfile = allProfiles.find(p => p.id === memberId);
+                    if (memberProfile) {
+                      setEditingMemberId(memberId);
+                      setCurrentView('profile');
+                    }
+                  }
+                }}
+              />}
+              {currentView === 'settings' && userProfile && (
+                <SettingsView 
                   profile={userProfile} 
+                  isAdmin={isAdmin} 
                   onShowToast={showToast}
                   onUpdateProfile={async (updatedProfile) => {
                     setUserProfile(updatedProfile);
@@ -553,9 +577,46 @@ export default function App() {
                       const { error } = await supabase.from('profiles').upsert(updatedProfile);
                       if (error) {
                         console.error('Supabase profile update error:', error);
+                        showToast(`Settings sync failed: ${error.message}`);
+                      } else {
+                        showToast("Settings updated successfully");
+                      }
+                    } catch (err: any) {
+                      console.error('Supabase profile update error:', err);
+                      showToast(`Settings sync failed: ${err.message || 'Unknown error'}`);
+                    }
+                  }}
+                />
+              )}
+              {currentView === 'profile' && (userProfile || editingMemberId) && (
+                <ProfileView 
+                  key={editingMemberId || userProfile?.id}
+                  profile={editingMemberId ? (allProfiles.find(m => m.id === editingMemberId) || userProfile!) : userProfile!} 
+                  onShowToast={showToast}
+                  isAdmin={isAdmin}
+                  onUpdateProfile={async (updatedProfile) => {
+                    if (editingMemberId) {
+                      // Update the profile in the list
+                      const newProfiles = allProfiles.map(p => p.id === updatedProfile.id ? updatedProfile : p);
+                      setAllProfiles(newProfiles);
+                      
+                      // Update team members as well
+                      const newTeam = teamMembers.map(m => m.id === updatedProfile.id ? { ...m, name: updatedProfile.name, role: updatedProfile.role, avatar: updatedProfile.avatar } : m);
+                      setTeamMembers(newTeam);
+                    } else {
+                      setUserProfile(updatedProfile);
+                      // Update in allProfiles too
+                      setAllProfiles(allProfiles.map(p => p.id === updatedProfile.id ? updatedProfile : p));
+                    }
+                    
+                    try {
+                      const { error } = await supabase.from('profiles').upsert(updatedProfile);
+                      if (error) {
+                        console.error('Supabase profile update error:', error);
                         showToast(`Profile sync failed: ${error.message}`);
                       } else {
                         showToast("Profile updated successfully");
+                        if (editingMemberId) setEditingMemberId(null);
                       }
                     } catch (err: any) {
                       console.error('Supabase profile update error:', err);
@@ -675,6 +736,7 @@ export default function App() {
                     const newProject: Project = {
                       id: Math.random().toString(36).substr(2, 9),
                       name: newProjectData.name,
+                      managerId: userProfile?.id,
                       members: 1,
                       activeTasks: 0,
                       progress: 0,
@@ -738,12 +800,20 @@ export default function App() {
   );
 }
 
-function ProfileView({ profile, onUpdateProfile, onShowToast }: { 
+function ProfileView({ profile, onUpdateProfile, onShowToast, isAdmin }: { 
   profile: UserProfile, 
   onUpdateProfile: (profile: UserProfile) => void,
-  onShowToast: (msg: string) => void
+  onShowToast: (msg: string) => void,
+  isAdmin: boolean
 }) {
-  const [editedProfile, setEditedProfile] = useState<UserProfile>(profile);
+  const [editedProfile, setEditedProfile] = useState<UserProfile>({
+    ...profile,
+    preferences: profile.preferences || {
+      notifications: true,
+      darkMode: false,
+      language: 'English'
+    }
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -897,13 +967,14 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant flex items-center justify-between">
                   Job Title
-                  <span className="text-[9px] text-primary/60 lowercase font-medium italic">Only Project Managers can create projects</span>
+                  {!isAdmin && <span className="text-[9px] text-primary/60 lowercase font-medium italic">Only Admins can change roles</span>}
                 </label>
                 <input 
-                  disabled={!isEditing}
+                  disabled={!isEditing || !isAdmin}
                   value={editedProfile.role}
                   onChange={(e) => setEditedProfile({ ...editedProfile, role: e.target.value })}
                   className="w-full bg-surface-container border-none rounded-xl p-3 focus:ring-2 focus:ring-primary disabled:opacity-60"
+                  placeholder="e.g. Designer, Developer"
                 />
               </div>
               <div className="sm:col-span-2 space-y-2">
@@ -936,23 +1007,23 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
                   disabled={!isEditing}
                   onClick={() => setEditedProfile({
                     ...editedProfile,
-                    preferences: { ...editedProfile.preferences, notifications: !editedProfile.preferences.notifications }
+                    preferences: { ...editedProfile.preferences, notifications: !editedProfile.preferences?.notifications }
                   })}
                   className={cn(
                     "w-12 h-6 rounded-full transition-colors relative",
-                    editedProfile.preferences.notifications ? "bg-primary" : "bg-surface-container-highest"
+                    editedProfile.preferences?.notifications ? "bg-primary" : "bg-surface-container-highest"
                   )}
                 >
                   <div className={cn(
                     "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                    editedProfile.preferences.notifications ? "left-7" : "left-1"
+                    editedProfile.preferences?.notifications ? "left-7" : "left-1"
                   )} />
                 </button>
               </div>
 
               <div className="flex items-center justify-between p-4 bg-surface-container rounded-2xl">
                 <div className="flex items-center gap-3">
-                  {editedProfile.preferences.darkMode ? <Moon className="w-5 h-5 text-on-surface-variant" /> : <Sun className="w-5 h-5 text-on-surface-variant" />}
+                  {editedProfile.preferences?.darkMode ? <Moon className="w-5 h-5 text-on-surface-variant" /> : <Sun className="w-5 h-5 text-on-surface-variant" />}
                   <div>
                     <p className="font-bold text-sm">Dark Mode</p>
                     <p className="text-xs text-on-surface-variant">Switch to high-contrast dark theme</p>
@@ -962,16 +1033,16 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
                   disabled={!isEditing}
                   onClick={() => setEditedProfile({
                     ...editedProfile,
-                    preferences: { ...editedProfile.preferences, darkMode: !editedProfile.preferences.darkMode }
+                    preferences: { ...editedProfile.preferences, darkMode: !editedProfile.preferences?.darkMode }
                   })}
                   className={cn(
                     "w-12 h-6 rounded-full transition-colors relative",
-                    editedProfile.preferences.darkMode ? "bg-primary" : "bg-surface-container-highest"
+                    editedProfile.preferences?.darkMode ? "bg-primary" : "bg-surface-container-highest"
                   )}
                 >
                   <div className={cn(
                     "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                    editedProfile.preferences.darkMode ? "left-7" : "left-1"
+                    editedProfile.preferences?.darkMode ? "left-7" : "left-1"
                   )} />
                 </button>
               </div>
@@ -986,7 +1057,7 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
                 </div>
                 <select 
                   disabled={!isEditing}
-                  value={editedProfile.preferences.language}
+                  value={editedProfile.preferences?.language}
                   onChange={(e) => setEditedProfile({
                     ...editedProfile,
                     preferences: { ...editedProfile.preferences, language: e.target.value }
@@ -1002,12 +1073,200 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
             </div>
           </div>
 
-          <div className="flex justify-end gap-4">
-            <button className="flex items-center gap-2 px-6 py-3 text-error font-bold hover:bg-error/10 rounded-xl transition-colors">
-              <LogOut className="w-5 h-5" />
-              Sign Out
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsView({ profile, isAdmin, onShowToast, onUpdateProfile }: { 
+  profile: UserProfile, 
+  isAdmin: boolean, 
+  onShowToast: (msg: string) => void,
+  onUpdateProfile: (profile: UserProfile) => void
+}) {
+  const [activeTab, setActiveTab] = useState('General');
+  const [editedProfile, setEditedProfile] = useState<UserProfile>(profile);
+
+  const tabs = [
+    { id: 'General', icon: Settings },
+    { id: 'Security', icon: ShieldCheck },
+    { id: 'Workspace', icon: Layers },
+    { id: 'Notifications', icon: Bell },
+  ];
+
+  const handleToggle = (key: keyof UserProfile['preferences']) => {
+    const updated = {
+      ...editedProfile,
+      preferences: {
+        ...editedProfile.preferences,
+        [key]: !editedProfile.preferences[key]
+      }
+    };
+    setEditedProfile(updated);
+    onUpdateProfile(updated);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-12">
+      <div className="space-y-2">
+        <h2 className="text-4xl font-extrabold text-on-surface tracking-tight font-headline">Settings</h2>
+        <p className="text-on-surface-variant text-lg">Manage your account and workspace preferences.</p>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-8">
+        {/* Sidebar Nav */}
+        <div className="md:w-64 space-y-2">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all",
+                activeTab === tab.id 
+                  ? "bg-primary text-white shadow-lg shadow-primary/20" 
+                  : "text-on-surface-variant hover:bg-surface-container"
+              )}
+            >
+              <tab.icon className="w-5 h-5" />
+              {tab.id}
             </button>
-          </div>
+          ))}
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 bg-surface-container-lowest rounded-3xl p-8 shadow-ambient border border-outline-variant/5">
+          {activeTab === 'General' && (
+            <div className="space-y-8">
+              <div className="space-y-6">
+                <h3 className="text-xl font-bold font-headline">Display Preferences</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-surface-container rounded-2xl">
+                    <div className="flex items-center gap-3">
+                      <Sun className="w-5 h-5 text-on-surface-variant" />
+                      <div>
+                        <p className="font-bold text-sm">Dark Mode</p>
+                        <p className="text-xs text-on-surface-variant">Switch to high-contrast dark theme</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleToggle('darkMode')}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-colors relative",
+                        editedProfile.preferences?.darkMode ? "bg-primary" : "bg-surface-container-highest"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                        editedProfile.preferences?.darkMode ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <h3 className="text-xl font-bold font-headline">Language</h3>
+                <select 
+                  value={editedProfile.preferences?.language}
+                  onChange={(e) => {
+                    const updated = {
+                      ...editedProfile,
+                      preferences: { ...editedProfile.preferences, language: e.target.value }
+                    };
+                    setEditedProfile(updated);
+                    onUpdateProfile(updated);
+                  }}
+                  className="w-full bg-surface-container border-none rounded-2xl p-4 focus:ring-2 focus:ring-primary font-bold"
+                >
+                  <option>English</option>
+                  <option>Spanish</option>
+                  <option>French</option>
+                  <option>German</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Notifications' && (
+            <div className="space-y-8">
+              <h3 className="text-xl font-bold font-headline">Notification Channels</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-surface-container rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Bell className="w-5 h-5 text-on-surface-variant" />
+                    <div>
+                      <p className="font-bold text-sm">Push Notifications</p>
+                      <p className="text-xs text-on-surface-variant">Receive alerts about task updates</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => handleToggle('notifications')}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-colors relative",
+                      editedProfile.preferences?.notifications ? "bg-primary" : "bg-surface-container-highest"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                      editedProfile.preferences?.notifications ? "left-7" : "left-1"
+                    )} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Security' && (
+            <div className="space-y-8">
+              <h3 className="text-xl font-bold font-headline">Account Security</h3>
+              <div className="p-6 bg-surface-container rounded-2xl space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center text-success">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Two-Factor Authentication</p>
+                    <p className="text-xs text-on-surface-variant">Add an extra layer of security to your account</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => onShowToast("2FA setup coming soon")}
+                  className="w-full py-3 bg-surface-container-highest text-on-surface font-bold rounded-xl hover:bg-primary hover:text-white transition-all"
+                >
+                  Enable 2FA
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Workspace' && (
+            <div className="space-y-8">
+              <h3 className="text-xl font-bold font-headline">Workspace Configuration</h3>
+              <div className="space-y-6">
+                <div className="p-6 bg-surface-container rounded-2xl space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Workspace Name</p>
+                  <p className="text-lg font-bold">Beached Street Property</p>
+                </div>
+                
+                {isAdmin && (
+                  <div className="p-6 bg-primary/5 border border-primary/10 rounded-2xl space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Settings className="w-5 h-5 text-primary" />
+                      <p className="font-bold text-primary">Admin Controls</p>
+                    </div>
+                    <p className="text-sm text-on-surface-variant">As an administrator, you can manage global workspace settings and user permissions.</p>
+                    <button 
+                      onClick={() => onShowToast("Admin dashboard coming soon")}
+                      className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20"
+                    >
+                      Open Admin Dashboard
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1016,13 +1275,14 @@ function ProfileView({ profile, onUpdateProfile, onShowToast }: {
 
 // --- Sub-Views ---
 
-function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAllTasks, userProfile }: { 
+function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAllTasks, userProfile, teamMembers }: { 
   tasks: Task[], 
   projects: Project[], 
   onTaskClick: (task: Task) => void,
   onProjectClick: (projectId: string) => void,
   onViewAllTasks: () => void,
-  userProfile: UserProfile | null
+  userProfile: UserProfile | null,
+  teamMembers: TeamMember[]
 }) {
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -1190,7 +1450,18 @@ function DashboardView({ tasks, projects, onTaskClick, onProjectClick, onViewAll
               </div>
               <div>
                 <h4 className="font-headline font-bold text-lg">{project.name}</h4>
-                <p className="text-xs text-on-surface-variant mt-1">{project.members} core members • {project.activeTasks} active tasks</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {teamMembers.find(m => m.id === project.managerId) && (
+                    <img 
+                      src={teamMembers.find(m => m.id === project.managerId)?.avatar} 
+                      className="w-4 h-4 rounded-full object-cover" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  )}
+                  <p className="text-[10px] text-on-surface-variant font-medium">
+                    {teamMembers.find(m => m.id === project.managerId)?.name || 'No Manager'} • {project.activeTasks} tasks
+                  </p>
+                </div>
               </div>
               <div className="pt-4 border-t border-surface-container-high flex justify-between items-center">
                 <div className="flex -space-x-1">
@@ -1257,18 +1528,20 @@ function SortableTask({ task, onClick }: { task: Task, onClick: () => void }) {
   );
 }
 
-function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTask, onShowToast, teamMembers }: { 
+function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTask, onShowToast, teamMembers, projects, onProjectClick }: { 
   tasks: Task[], 
   activeProject: Project | null,
   onTaskClick: (task: Task) => void,
   onAddTask: (status?: Status) => void,
   onUpdateTask: (task: Task) => void,
   onShowToast: (msg: string) => void,
-  teamMembers: TeamMember[]
+  teamMembers: TeamMember[],
+  projects: Project[],
+  onProjectClick: (id: string | null) => void
 }) {
   const [activeTab, setActiveTab] = useState('Board');
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 3)); // April 2026
-  const columns: Status[] = ['Backlog', 'In Progress', 'Review', 'Done'];
+  const columns: Status[] = ['To Do', 'In Progress', 'Review', 'On Hold', 'Done', 'Completed'];
   
   const tabs = ['Overview', 'List', 'Board', 'Timeline', 'Dashboard', 'Calendar'];
 
@@ -1318,9 +1591,76 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTa
     <div className="space-y-6">
       {/* Project Header & Sub-nav */}
       <div className="space-y-6">
+        {!activeProject && (
+          <div className="bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient mb-8">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-2xl font-bold font-headline">Project Directory</h3>
+                <p className="text-on-surface-variant text-sm">Overview of all active streams and their managers.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Sort by:</span>
+                <select className="bg-surface-container-high border-none rounded-lg text-xs font-bold py-1.5 px-3 focus:ring-2 focus:ring-primary">
+                  <option>Recent</option>
+                  <option>Priority</option>
+                  <option>Progress</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {projects.map(project => {
+                const manager = teamMembers.find(m => m.id === project.managerId);
+                return (
+                  <div 
+                    key={project.id}
+                    onClick={() => onProjectClick(project.id)}
+                    className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/5 hover:scale-[1.02] hover:shadow-xl transition-all cursor-pointer group"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <span className="px-2 py-1 bg-success/10 text-success text-[10px] font-bold rounded-lg uppercase">Healthy</span>
+                    </div>
+                    <h4 className="font-bold text-lg mb-1 group-hover:text-primary transition-colors">{project.name}</h4>
+                    <div className="flex items-center gap-2 mb-4">
+                      {manager ? (
+                        <>
+                          <img src={manager.avatar} className="w-5 h-5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                          <span className="text-xs font-medium text-on-surface-variant">{manager.name}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs font-medium text-on-surface-variant/40 italic">No manager assigned</span>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                        <span>Progress</span>
+                        <span>{project.progress}%</span>
+                      </div>
+                      <div className="h-1.5 bg-surface-container rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-end justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2">
+              {activeProject && (
+                <button 
+                  onClick={() => onProjectClick(null)}
+                  className="p-1 hover:bg-surface-container rounded-lg text-on-surface-variant transition-colors mr-2"
+                  title="Back to Directory"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              )}
               <span className="px-2 py-0.5 rounded-md bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-widest">
                 {activeProject ? 'Active Project' : 'All Projects'}
               </span>
@@ -1449,7 +1789,142 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTa
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'Board' ? (
+          {activeTab === 'Overview' ? (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+              <div className="md:col-span-8 space-y-8">
+                <div className="bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient">
+                  <h3 className="text-xl font-bold font-headline mb-6">Project Summary</h3>
+                  <p className="text-on-surface-variant leading-relaxed mb-8">
+                    {activeProject?.description || "This project focuses on delivering high-quality results through iterative development and collaborative team efforts. We are currently in the execution phase with a focus on core features."}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Status</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-success" />
+                        <span className="font-bold text-sm">On Track</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Progress</span>
+                      <span className="font-bold text-sm block">68%</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Due Date</span>
+                      <span className="font-bold text-sm block">Oct 24, 2026</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Priority</span>
+                      <span className="font-bold text-sm block text-error">High</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient">
+                  <h3 className="text-xl font-bold font-headline mb-6">Recent Activity</h3>
+                  <div className="space-y-6">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="flex gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                          <RefreshCw className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold">Task "{tasks[i]?.title || 'Update Documentation'}" moved to Review</p>
+                          <p className="text-xs text-on-surface-variant">by {teamMembers[i % teamMembers.length]?.name} • 2h ago</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-4 space-y-8">
+                <div className="bg-primary text-on-primary rounded-3xl p-8 shadow-xl shadow-primary/20 relative overflow-hidden">
+                  <Zap className="absolute -right-4 -top-4 w-32 h-32 opacity-10 rotate-12" />
+                  <h3 className="text-xl font-bold font-headline mb-2 relative z-10">AI Project Pulse</h3>
+                  <p className="text-on-primary/80 text-sm mb-6 relative z-10">Velocity is up 12% this week. Team is performing above baseline.</p>
+                  <button className="w-full py-3 bg-white text-primary font-bold rounded-xl text-sm relative z-10 hover:bg-on-primary-fixed-variant hover:text-white transition-all">
+                    Generate Report
+                  </button>
+                </div>
+
+                <div className="bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient">
+                  <h3 className="text-sm font-bold font-headline mb-4 uppercase tracking-widest text-on-surface-variant">Team Members</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {teamMembers.map(m => (
+                      <img key={m.id} src={m.avatar} className="w-10 h-10 rounded-xl object-cover ring-2 ring-surface" referrerPolicy="no-referrer" title={m.name} />
+                    ))}
+                    <button className="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'List' ? (
+            <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 shadow-ambient overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-outline-variant/10">
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Task Name</th>
+                      {!activeProject && <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Project</th>}
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Assignee</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Due Date</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/5">
+                    {tasks.map(task => (
+                      <tr 
+                        key={task.id} 
+                        onClick={() => onTaskClick(task)}
+                        className="hover:bg-surface-container transition-colors cursor-pointer group"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-2 h-2 rounded-full",
+                              (task.status === 'Done' || task.status === 'Completed') ? "bg-success" : task.status === 'On Hold' ? "bg-error" : "bg-primary"
+                            )} />
+                            <span className="font-bold text-sm text-on-surface group-hover:text-primary transition-colors">{task.title}</span>
+                          </div>
+                        </td>
+                        {!activeProject && (
+                          <td className="px-6 py-4">
+                            <span className="text-xs font-medium text-on-surface-variant">
+                              {projects.find(p => p.id === task.projectId)?.name || 'Global'}
+                            </span>
+                          </td>
+                        )}
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                            (task.status === 'Done' || task.status === 'Completed') ? "bg-success/10 text-success" : 
+                            task.status === 'On Hold' ? "bg-error/10 text-error" : 
+                            "bg-primary/10 text-primary"
+                          )}>
+                            {task.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <img src={teamMembers[0].avatar} className="w-6 h-6 rounded-full object-cover" referrerPolicy="no-referrer" />
+                            <span className="text-xs font-medium text-on-surface-variant">Assigned</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{task.dueDate}</td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs font-bold text-error">High</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === 'Board' ? (
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCorners}
@@ -1498,8 +1973,60 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTa
                 ))}
               </div>
             </DndContext>
+          ) : activeTab === 'Timeline' ? (
+            <GanttChart tasks={tasks} projects={activeProject ? [activeProject] : projects} />
+          ) : activeTab === 'Dashboard' ? (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+              <div className="md:col-span-4 bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient">
+                <h3 className="text-sm font-bold font-headline mb-6 uppercase tracking-widest text-on-surface-variant">Task Distribution</h3>
+                <div className="space-y-6">
+                  {columns.map(status => {
+                    const count = tasks.filter(t => t.status === status).length;
+                    const percentage = (count / tasks.length) * 100;
+                    return (
+                      <div key={status} className="space-y-2">
+                        <div className="flex justify-between text-xs font-bold">
+                          <span className="text-on-surface">{status}</span>
+                          <span className="text-on-surface-variant">{count}</span>
+                        </div>
+                        <div className="h-2 bg-surface-container rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${percentage}%` }}
+                            className={cn(
+                              "h-full rounded-full",
+                              (status === 'Done' || status === 'Completed') ? "bg-success" : status === 'On Hold' ? "bg-error" : "bg-primary"
+                            )}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="md:col-span-8 bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient">
+                <h3 className="text-sm font-bold font-headline mb-6 uppercase tracking-widest text-on-surface-variant">Velocity Trend</h3>
+                <div className="h-64 flex items-end gap-4 px-4">
+                  {[45, 60, 55, 80, 75, 90, 85].map((val, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-3 group">
+                      <motion.div 
+                        initial={{ height: 0 }}
+                        animate={{ height: `${val}%` }}
+                        className="w-full bg-primary/20 rounded-t-xl group-hover:bg-primary transition-colors relative"
+                      >
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                          {val}%
+                        </div>
+                      </motion.div>
+                      <span className="text-[10px] font-bold text-on-surface-variant/40">W{i+1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : activeTab === 'Calendar' ? (
-            <CalendarView />
+            <CalendarView tasks={tasks} />
           ) : (
             <div className="flex flex-col items-center justify-center py-32 text-on-surface-variant/40 bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20">
               <Layers className="w-12 h-12 mb-4 opacity-20" />
@@ -1513,7 +2040,7 @@ function ProjectsView({ tasks, activeProject, onTaskClick, onAddTask, onUpdateTa
   );
 }
 
-function CalendarView() {
+function CalendarView({ tasks = [] }: { tasks?: Task[] }) {
   const [view, setView] = useState('Month');
   const [currentDate, setCurrentDate] = useState(new Date());
   
@@ -1598,27 +2125,296 @@ function CalendarView() {
           ))}
         </div>
         <div className="grid grid-cols-7 divide-x divide-y divide-outline-variant/10">
-          {calendarDays.map((item, i) => (
-            <div key={i} className={cn(
-              "min-h-[140px] p-4 font-medium transition-colors hover:bg-surface-container/20",
-              !item.currentMonth && "bg-surface-container/20 text-on-surface-variant/40",
-              isToday(item.day, item.currentMonth) && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
-            )}>
-              <span className={cn(
-                "inline-flex w-8 h-8 items-center justify-center rounded-full text-sm font-bold",
-                isToday(item.day, item.currentMonth) ? "bg-primary text-white" : "text-on-surface"
+          {calendarDays.map((item, i) => {
+            const dayTasks = tasks.filter(t => {
+              if (!t.dueDate) return false;
+              const d = new Date(t.dueDate);
+              return d.getDate() === item.day && 
+                     d.getMonth() === currentDate.getMonth() && 
+                     d.getFullYear() === currentDate.getFullYear() &&
+                     item.currentMonth;
+            });
+
+            return (
+              <div key={i} className={cn(
+                "min-h-[140px] p-4 font-medium transition-colors hover:bg-surface-container/20",
+                !item.currentMonth && "bg-surface-container/20 text-on-surface-variant/40",
+                isToday(item.day, item.currentMonth) && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
               )}>
-                {item.day}
-              </span>
-            </div>
-          ))}
+                <div className="flex justify-between items-start mb-2">
+                  <span className={cn(
+                    "inline-flex w-8 h-8 items-center justify-center rounded-full text-sm font-bold",
+                    isToday(item.day, item.currentMonth) ? "bg-primary text-white" : "text-on-surface"
+                  )}>
+                    {item.day}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {dayTasks.map(task => (
+                    <div key={task.id} className="px-2 py-1 rounded bg-primary/10 text-[10px] font-bold text-primary truncate">
+                      {task.title}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-function TeamView({ teamMembers }: { teamMembers: TeamMember[] }) {
+function GanttChart({ tasks, projects }: { tasks: Task[], projects: Project[] }) {
+  const [scrollPos, setScrollPos] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Calculate date range
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 7); // Start 1 week ago
+  
+  const endDate = new Date(today);
+  endDate.setDate(today.getDate() + 21); // End 3 weeks from now
+  
+  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const dayWidth = 100; // pixels per day
+  
+  const days = Array.from({ length: totalDays }, (_, i) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    return date;
+  });
+
+  const getTaskPosition = (task: Task) => {
+    if (!task.dueDate) return null;
+    const taskDate = new Date(task.dueDate);
+    if (isNaN(taskDate.getTime())) return null;
+    
+    const diffTime = taskDate.getTime() - startDate.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    
+    // Assume tasks take 3 days if not specified
+    const duration = 3; 
+    const left = (diffDays - duration + 1) * dayWidth;
+    const width = duration * dayWidth;
+    
+    return { left, width };
+  };
+
+  return (
+    <div className="bg-surface-container-low rounded-3xl p-8 overflow-hidden border border-outline-variant/10 shadow-ambient">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold font-headline">Global Activity Gantt</h3>
+            <p className="text-xs text-on-surface-variant font-medium">Cross-project timeline synchronization</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => containerRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+            className="p-2 hover:bg-surface-container rounded-xl transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => containerRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+            className="p-2 hover:bg-surface-container rounded-xl transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div 
+        ref={containerRef}
+        className="overflow-x-auto no-scrollbar relative"
+      >
+        <div style={{ width: totalDays * dayWidth }} className="relative min-h-[400px]">
+          {/* Timeline Header */}
+          <div className="flex border-b border-outline-variant/10 mb-6 sticky top-0 bg-surface-container-low z-20">
+            {days.map((date, i) => {
+              const isToday = date.toDateString() === today.toDateString();
+              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+              return (
+                <div 
+                  key={i} 
+                  style={{ width: dayWidth }} 
+                  className={cn(
+                    "shrink-0 py-4 text-center flex flex-col items-center gap-1",
+                    isToday && "bg-primary/5"
+                  )}
+                >
+                  <span className={cn(
+                    "text-[10px] uppercase font-bold tracking-widest",
+                    isToday ? "text-primary" : "text-on-surface-variant/40"
+                  )}>
+                    {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                  </span>
+                  <span className={cn(
+                    "w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold",
+                    isToday ? "bg-primary text-white" : "text-on-surface"
+                  )}>
+                    {date.getDate()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Grid Lines */}
+          <div className="absolute inset-0 pointer-events-none flex">
+            {days.map((_, i) => (
+              <div 
+                key={i} 
+                style={{ width: dayWidth }} 
+                className="shrink-0 border-r border-outline-variant/5 h-full"
+              />
+            ))}
+          </div>
+
+          {/* Today Line */}
+          <div 
+            className="absolute top-0 bottom-0 w-0.5 bg-primary z-10 pointer-events-none"
+            style={{ left: Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) * dayWidth }}
+          >
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 px-2 py-1 bg-primary text-white text-[10px] font-bold rounded-b-md whitespace-nowrap">
+              TODAY
+            </div>
+          </div>
+
+          {/* Tasks */}
+          <div className="space-y-4 pt-4 relative z-10">
+            {projects.map(project => {
+              const projectTasks = tasks.filter(t => t.projectId === project.id);
+              if (projectTasks.length === 0) return null;
+
+              return (
+                <div key={project.id} className="space-y-2">
+                  <div className="sticky left-0 z-30 inline-block px-4 py-1 bg-surface-container-high rounded-r-full text-[10px] font-bold uppercase tracking-widest text-primary shadow-sm">
+                    {project.name}
+                  </div>
+                  <div className="space-y-2">
+                    {projectTasks.map(task => {
+                      const pos = getTaskPosition(task);
+                      if (!pos) return null;
+
+                      return (
+                        <motion.div
+                          key={task.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="relative h-10 group"
+                        >
+                          <div 
+                            style={{ left: pos.left, width: pos.width }}
+                            className={cn(
+                              "absolute h-full rounded-xl flex items-center px-4 shadow-sm transition-all hover:scale-[1.02] hover:shadow-lg cursor-pointer overflow-hidden",
+                              (task.status === 'Done' || task.status === 'Completed') ? "bg-primary text-white" :
+                              task.status === 'On Hold' ? "bg-error text-white" :
+                              "bg-surface-container-highest text-on-surface"
+                            )}
+                          >
+                            <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <span className="text-xs font-bold truncate relative z-10">{task.title}</span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkloadHeatmap({ teamMembers }: { teamMembers: TeamMember[] }) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  return (
+    <div className="bg-surface-container-low rounded-3xl p-8 border border-outline-variant/10 shadow-ambient overflow-x-auto">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+          <ActivityIcon className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold font-headline">Workload Intensity</h3>
+          <p className="text-xs text-on-surface-variant font-medium">Real-time capacity distribution heatmap</p>
+        </div>
+      </div>
+      
+      <table className="w-full border-separate border-spacing-2">
+        <thead>
+          <tr>
+            <th className="text-left p-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/40">Team Member</th>
+            {days.map(day => (
+              <th key={day} className="p-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/40">{day}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {teamMembers.map(member => (
+            <tr key={member.id}>
+              <td className="p-2 min-w-[180px]">
+                <div className="flex items-center gap-3">
+                  <img src={member.avatar} className="w-10 h-10 rounded-xl object-cover" referrerPolicy="no-referrer" />
+                  <div>
+                    <p className="font-bold text-sm truncate">{member.name}</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">{member.role}</p>
+                  </div>
+                </div>
+              </td>
+              {days.map((day, i) => {
+                // Mock intensity based on member load and some randomness for visualization
+                const baseIntensity = member.load;
+                const dailyVariation = Math.sin(i * 1.5) * 20;
+                const intensity = Math.max(10, Math.min(100, baseIntensity + dailyVariation));
+                
+                return (
+                  <td key={day} className="p-1">
+                    <motion.div 
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                      className={cn(
+                        "h-14 min-w-[60px] rounded-xl transition-all hover:scale-105 cursor-help flex items-center justify-center",
+                        intensity > 90 ? "bg-error text-white shadow-lg shadow-error/20" :
+                        intensity > 70 ? "bg-primary text-white shadow-lg shadow-primary/20" :
+                        intensity > 40 ? "bg-primary/40 text-on-surface" :
+                        "bg-surface-container-highest text-on-surface-variant/60"
+                      )}
+                      title={`${member.name} - ${day}: ${Math.round(intensity)}% load`}
+                    >
+                      <span className="text-[10px] font-black">{Math.round(intensity)}%</span>
+                    </motion.div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TeamView({ teamMembers, tasks, projects, isAdmin, onMemberClick }: { 
+  teamMembers: TeamMember[], 
+  tasks: Task[],
+  projects: Project[],
+  isAdmin: boolean, 
+  onMemberClick: (id: string) => void 
+}) {
   const [view, setView] = useState('Grid View');
 
   return (
@@ -1626,7 +2422,7 @@ function TeamView({ teamMembers }: { teamMembers: TeamMember[] }) {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
           <h2 className="text-4xl font-extrabold text-on-surface tracking-tight font-headline">Team Workload</h2>
-          <p className="text-on-surface-variant text-lg">Visualizing capacity across the next 7-day sprint cycle.</p>
+          <p className="text-on-surface-variant text-lg">Visualizing capacity and project timelines.</p>
         </div>
         <div className="flex items-center bg-surface-container p-1 rounded-2xl">
           {['Grid View', 'Timeline', 'Heatmap'].map(v => (
@@ -1644,93 +2440,100 @@ function TeamView({ teamMembers }: { teamMembers: TeamMember[] }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-12 bg-surface-container-low rounded-2xl p-8 overflow-hidden relative">
-          <div className="relative z-10">
-            <h3 className="text-xl font-bold mb-6 flex items-center gap-2 font-headline">
-              <Layers className="w-5 h-5 text-primary" />
-              Weekly Capacity Pulse
-            </h3>
-            <div className="grid grid-cols-7 gap-4">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
-                <div key={day} className="space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider">{day}</span>
-                  <div className="h-24 bg-primary/10 rounded-xl relative group overflow-hidden">
-                    <motion.div 
-                      initial={{ height: 0 }}
-                      animate={{ height: i === 2 ? '100%' : `${Math.random() * 60 + 30}%` }}
-                      className={cn(
-                        "absolute bottom-0 left-0 w-full rounded-xl transition-all",
-                        i === 2 ? "bg-error" : "bg-primary/60"
-                      )}
-                    />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={view}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="min-h-[600px]"
+        >
+          {view === 'Timeline' && (
+            <GanttChart tasks={tasks} projects={projects} />
+          )}
+
+          {view === 'Heatmap' && (
+            <WorkloadHeatmap teamMembers={teamMembers} />
+          )}
+
+          {view === 'Grid View' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {teamMembers.map(member => (
+                <div 
+                  key={member.id} 
+                  onClick={() => isAdmin && onMemberClick(member.id)}
+                  className={cn(
+                    "lg:col-span-4 bg-surface-container-lowest rounded-2xl p-6 transition-all duration-300 flex flex-col gap-6 border border-outline-variant/5",
+                    isAdmin ? "hover:scale-[1.02] hover:shadow-ambient cursor-pointer" : ""
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="relative shrink-0">
+                      <img src={member.avatar} alt={member.name} className="w-16 h-16 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+                      <div className={cn(
+                        "absolute -bottom-1 -right-1 w-5 h-5 border-4 border-white rounded-full",
+                        member.status === 'online' ? "bg-green-500" : "bg-error"
+                      )} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-lg font-headline">{member.name}</h4>
+                      <p className="text-sm text-on-surface-variant">{member.role}</p>
+                    </div>
+                    {isAdmin && (
+                      <div className="ml-auto p-2 bg-primary/10 text-primary rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Settings className="w-4 h-4" />
+                      </div>
+                    )}
                   </div>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
+                      <span className="text-on-surface-variant">{member.load > 100 ? 'Over Capacity' : 'Current Load'}</span>
+                      <span className={member.load > 100 ? "text-error" : "text-primary"}>{member.load}%</span>
+                    </div>
+                    <div className="h-2 bg-surface-container rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(member.load, 100)}%` }}
+                        className={cn("h-full rounded-full", member.load > 100 ? "bg-error" : "bg-primary")} 
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-surface-container-low p-4 rounded-xl">
+                      <span className="text-[10px] block text-on-surface-variant font-bold uppercase mb-1">Active</span>
+                      <span className="text-xl font-extrabold">{member.activeTasks}</span>
+                    </div>
+                    <div className="bg-surface-container-low p-4 rounded-xl">
+                      <span className="text-[10px] block text-on-surface-variant font-bold uppercase mb-1">Blocked</span>
+                      <span className={cn("text-xl font-extrabold", member.blockedTasks > 0 && "text-error")}>{member.blockedTasks}</span>
+                    </div>
+                  </div>
+                  {member.load > 100 && (
+                    <p className="text-xs text-error font-medium flex items-center gap-1">
+                      <HelpCircle className="w-3 h-3" />
+                      Critical burnout risk detected
+                    </p>
+                  )}
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
 
-        {teamMembers.map(member => (
-          <div key={member.id} className="lg:col-span-4 bg-surface-container-lowest rounded-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-ambient flex flex-col gap-6 border border-outline-variant/5">
-            <div className="flex items-center gap-4">
-              <div className="relative shrink-0">
-                <img src={member.avatar} alt={member.name} className="w-16 h-16 rounded-2xl object-cover" referrerPolicy="no-referrer" />
-                <div className={cn(
-                  "absolute -bottom-1 -right-1 w-5 h-5 border-4 border-white rounded-full",
-                  member.status === 'online' ? "bg-green-500" : "bg-error"
-                )} />
-              </div>
-              <div>
-                <h4 className="font-bold text-lg font-headline">{member.name}</h4>
-                <p className="text-sm text-on-surface-variant">{member.role}</p>
+              <div className="lg:col-span-4 bg-primary text-on-primary rounded-2xl p-8 relative overflow-hidden flex flex-col justify-between group">
+                <div className="relative z-10">
+                  <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Insight Engine</span>
+                  <h3 className="text-2xl font-bold leading-tight mb-4 font-headline">Burnout Protection Active</h3>
+                  <p className="text-on-primary/80 text-sm leading-relaxed mb-8">
+                    AI is monitoring team capacity to prevent burnout and optimize task distribution across active streams.
+                  </p>
+                </div>
+                <button className="relative z-10 w-full bg-white text-primary py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-xl hover:bg-on-primary-fixed-variant hover:text-white transition-all">
+                  Review Reassignment
+                </button>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
-                <span className="text-on-surface-variant">{member.load > 100 ? 'Over Capacity' : 'Current Load'}</span>
-                <span className={member.load > 100 ? "text-error" : "text-primary"}>{member.load}%</span>
-              </div>
-              <div className="h-2 bg-surface-container rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(member.load, 100)}%` }}
-                  className={cn("h-full rounded-full", member.load > 100 ? "bg-error" : "bg-primary")} 
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-surface-container-low p-4 rounded-xl">
-                <span className="text-[10px] block text-on-surface-variant font-bold uppercase mb-1">Active</span>
-                <span className="text-xl font-extrabold">{member.activeTasks}</span>
-              </div>
-              <div className="bg-surface-container-low p-4 rounded-xl">
-                <span className="text-[10px] block text-on-surface-variant font-bold uppercase mb-1">Blocked</span>
-                <span className={cn("text-xl font-extrabold", member.blockedTasks > 0 && "text-error")}>{member.blockedTasks}</span>
-              </div>
-            </div>
-            {member.load > 100 && (
-              <p className="text-xs text-error font-medium flex items-center gap-1">
-                <HelpCircle className="w-3 h-3" />
-                Critical burnout risk detected
-              </p>
-            )}
-          </div>
-        ))}
-
-        <div className="lg:col-span-4 bg-primary text-on-primary rounded-2xl p-8 relative overflow-hidden flex flex-col justify-between group">
-          <div className="relative z-10">
-            <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Insight Engine</span>
-            <h3 className="text-2xl font-bold leading-tight mb-4 font-headline">Burnout Protection Active</h3>
-            <p className="text-on-primary/80 text-sm leading-relaxed mb-8">
-              AI is monitoring team capacity to prevent burnout and optimize task distribution across active streams.
-            </p>
-          </div>
-          <button className="relative z-10 w-full bg-white text-primary py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-xl hover:bg-on-primary-fixed-variant hover:text-white transition-all">
-            Review Reassignment
-          </button>
-        </div>
-      </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -1763,7 +2566,7 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask, teamMembers }: 
   };
 
   const handleMarkComplete = () => {
-    const newStatus: Status = editedTask.status === 'Done' ? 'In Progress' : 'Done';
+    const newStatus: Status = editedTask.status === 'Completed' ? 'In Progress' : 'Completed';
     const updated = { ...editedTask, status: newStatus };
     setEditedTask(updated);
     onUpdateTask(updated);
@@ -1831,13 +2634,13 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask, teamMembers }: 
             onClick={handleMarkComplete}
             className={cn(
               "px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all",
-              editedTask.status === 'Done' 
+              editedTask.status === 'Completed' 
                 ? "bg-primary text-white" 
                 : "bg-secondary-container text-on-secondary-container hover:scale-[0.98]"
             )}
           >
-            <Plus className={cn("w-4 h-4 transition-transform", editedTask.status === 'Done' && "rotate-45")} />
-            {editedTask.status === 'Done' ? 'Completed' : 'Mark Complete'}
+            <Plus className={cn("w-4 h-4 transition-transform", editedTask.status === 'Completed' && "rotate-45")} />
+            {editedTask.status === 'Completed' ? 'Completed' : 'Mark Complete'}
           </button>
           <button className="w-10 h-10 rounded-full hover:bg-surface-container flex items-center justify-center">
             <Settings className="w-5 h-5" />
@@ -1861,6 +2664,28 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask, teamMembers }: 
             {errors.title && <p className="text-error text-xs font-bold">{errors.title}</p>}
           </div>
           <div className="flex flex-wrap gap-3 mt-4">
+            <select 
+              value={editedTask.status}
+              onChange={(e) => {
+                const updated = { ...editedTask, status: e.target.value as Status };
+                setEditedTask(updated);
+                onUpdateTask(updated);
+              }}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-primary cursor-pointer transition-colors",
+                editedTask.status === 'Completed' || editedTask.status === 'Done' ? "bg-success/10 text-success" :
+                editedTask.status === 'In Progress' ? "bg-primary/10 text-primary" :
+                editedTask.status === 'On Hold' ? "bg-error/10 text-error" :
+                "bg-surface-container-highest text-on-surface-variant"
+              )}
+            >
+              <option value="To Do">To Do</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Review">Review</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Done">Done</option>
+              <option value="Completed">Completed</option>
+            </select>
             <select 
               value={editedTask.priority || ''}
               onChange={(e) => setEditedTask({ ...editedTask, priority: e.target.value as any || undefined })}
@@ -2037,7 +2862,7 @@ function TaskDetailView({ task, allTasks, onClose, onUpdateTask, teamMembers }: 
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        depTask?.status === 'Done' ? "bg-primary" : "bg-error"
+                        (depTask?.status === 'Done' || depTask?.status === 'Completed') ? "bg-primary" : "bg-error"
                       )} />
                       <span className="text-sm font-medium text-on-surface">{depTask?.title || 'Unknown Task'}</span>
                     </div>
@@ -2260,7 +3085,13 @@ function LoginView({ onShowToast, setSession, setIsBypassed }: { onShowToast: (m
     console.log('Attempting login:', { email: email.trim(), mode: isSignUp ? 'Sign Up' : 'Password' });
     try {
       const { data, error } = isSignUp 
-        ? await supabase.auth.signUp({ email: email.trim(), password })
+        ? await supabase.auth.signUp({ 
+            email: email.trim(), 
+            password,
+            options: {
+              emailRedirectTo: 'https://beachedstreetproperty.netlify.app/'
+            }
+          })
         : await supabase.auth.signInWithPassword({ email: email.trim(), password });
       
       if (error) {

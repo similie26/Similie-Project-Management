@@ -1,4 +1,4 @@
-export type Status = 'In Progress' | 'Blocked' | 'Done' | 'Backlog' | 'Review';
+export type Status = 'To Do' | 'In Progress' | 'Review' | 'On Hold' | 'Done' | 'Completed';
 
 export interface Task {
   id: string;
@@ -43,6 +43,8 @@ export interface Activity {
 export interface Project {
   id: string;
   name: string;
+  description?: string;
+  managerId?: string;
   members: number;
   activeTasks: number;
   progress: number;
